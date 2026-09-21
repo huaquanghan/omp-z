@@ -13,7 +13,7 @@ ompz_tree_hash() {
 	(
 		git -C "$repo" diff --binary HEAD
 		git -C "$repo" ls-files --others --exclude-standard -z \
-			| grep -zv '^\.kit/' \
+			| { grep -zv '^\.kit/' || true; } \
 			| xargs -0 -r sha256sum 2>/dev/null
 	) | sha256sum | cut -d' ' -f1
 }
