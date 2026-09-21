@@ -13,7 +13,7 @@ import type { HindsightSessionState } from "../hindsight/state";
 import type { MnemopiSessionState } from "../mnemopi/state";
 import type { AgentSession } from "../session/agent-session";
 
-export type MemoryBackendId = "off" | "local" | "hindsight" | "mnemopi" | "sharpshooter";
+export type MemoryBackendId = "off" | "local" | "hindsight" | "mnemopi" | "sharpshooter" | "zvec";
 
 export interface MemoryBackendStatus {
 	backend: MemoryBackendId;
@@ -74,6 +74,26 @@ export interface MemoryBackendOperationContext {
 	agentDir: string;
 	cwd: string;
 	session?: AgentSession;
+	/**
+	 * Settings for the calling surface. Tools hold a `ToolSession`, not an
+	 * `AgentSession`, so backends that resolve configuration per operation
+	 * (zvec) read it here instead of from `session.settings`.
+	 */
+	settings?: Settings;
+}
+
+/** One id-addressed edit of a stored memory. */
+export interface MemoryBackendEditInput {
+	op: "update" | "forget" | "invalidate";
+	id: string;
+	content?: string;
+	importance?: number;
+	replacementId?: string;
+}
+
+export interface MemoryBackendEditResult {
+	status: "updated" | "forgotten" | "invalidated" | "not_found" | "not_editable";
+	message?: string;
 }
 
 export interface MemoryRuntimeContext {
@@ -139,6 +159,9 @@ export interface MemoryBackend {
 
 	/** Explicit user-facing save operation. */
 	save?(context: MemoryBackendOperationContext, input: MemoryBackendSaveInput): Promise<MemoryBackendSaveResult>;
+
+	/** Id-addressed update/forget/invalidate of one stored memory. */
+	edit?(context: MemoryBackendOperationContext, input: MemoryBackendEditInput): Promise<MemoryBackendEditResult>;
 
 	/** Render backend-specific memory statistics as markdown (`/memory stats`). */
 	stats?(agentDir: string, cwd: string, session?: AgentSession): Promise<string | undefined>;

@@ -3,6 +3,7 @@ import type { AgentTool, AgentToolResult } from "@oh-my-pi/pi-agent-core";
 import { logger, untilAborted } from "@oh-my-pi/pi-utils";
 import { isHindsightConfigured, loadHindsightConfig } from "../hindsight/config";
 import { formatCurrentTime, formatMemories } from "../hindsight/content";
+import { resolveMemoryBackend } from "../memory-backend/resolve";
 import recallDescription from "../prompts/tools/recall.md" with { type: "text" };
 import type { ToolSession } from ".";
 
@@ -26,7 +27,7 @@ export class MemoryRecallTool implements AgentTool<typeof memoryRecallSchema> {
 
 	static createIf(session: ToolSession): MemoryRecallTool | null {
 		const backend = session.settings.get("memory.backend");
-		if (backend !== "hindsight" && backend !== "mnemopi") return null;
+		if (backend !== "hindsight" && backend !== "mnemopi" && backend !== "zvec") return null;
 		if (backend === "hindsight" && !isHindsightConfigured(loadHindsightConfig(session.settings))) return null;
 		return new MemoryRecallTool(session);
 	}
@@ -34,6 +35,36 @@ export class MemoryRecallTool implements AgentTool<typeof memoryRecallSchema> {
 	async execute(_id: string, params: MemoryRecallParams, signal?: AbortSignal): Promise<AgentToolResult> {
 		return untilAborted(signal, async () => {
 			const backend = this.session.settings.get("memory.backend");
+			if (backend === "zvec") {
+				const resolved = await resolveMemoryBackend(this.session.settings);
+				const result = await resolved.search?.(
+					{
+						agentDir: this.session.settings.getAgentDir(),
+						cwd: this.session.cwd,
+						settings: this.session.settings,
+					},
+					params.query,
+				);
+				if (!result || result.count === 0) {
+					return {
+						content: [{ type: "text", text: result?.message ?? "No relevant memories found." }],
+						details: {},
+						useless: true,
+					};
+				}
+				const formatted = result.items
+					.map(item => `- ${item.id ? `[${item.id}] ` : ""}${item.content.replace(/\s*\n\s*/g, " ")}`)
+					.join("\n");
+				return {
+					content: [
+						{
+							type: "text",
+							text: `Found ${result.count} relevant ${result.count === 1 ? "memory" : "memories"} (as of ${formatCurrentTime()} UTC):\n\n${formatted}`,
+						},
+					],
+					details: {},
+				};
+			}
 			if (backend === "mnemopi") {
 				const state = this.session.getMnemopiSessionState?.();
 				if (!state) {

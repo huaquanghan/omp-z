@@ -3,6 +3,7 @@ import type { AgentTool, AgentToolResult } from "@oh-my-pi/pi-agent-core";
 import { logger, untilAborted } from "@oh-my-pi/pi-utils";
 import { isHindsightConfigured, loadHindsightConfig } from "../hindsight/config";
 import { ensureBankExists } from "../hindsight/bank";
+import { resolveMemoryBackend } from "../memory-backend/resolve";
 import reflectDescription from "../prompts/tools/reflect.md" with { type: "text" };
 import type { ToolSession } from ".";
 
@@ -27,7 +28,7 @@ export class MemoryReflectTool implements AgentTool<typeof memoryReflectSchema> 
 
 	static createIf(session: ToolSession): MemoryReflectTool | null {
 		const backend = session.settings.get("memory.backend");
-		if (backend !== "hindsight" && backend !== "mnemopi") return null;
+		if (backend !== "hindsight" && backend !== "mnemopi" && backend !== "zvec") return null;
 		if (backend === "hindsight" && !isHindsightConfigured(loadHindsightConfig(session.settings))) return null;
 		return new MemoryReflectTool(session);
 	}
@@ -35,6 +36,33 @@ export class MemoryReflectTool implements AgentTool<typeof memoryReflectSchema> 
 	async execute(_id: string, params: MemoryReflectParams, signal?: AbortSignal): Promise<AgentToolResult> {
 		return untilAborted(signal, async () => {
 			const backend = this.session.settings.get("memory.backend");
+			if (backend === "zvec") {
+				const resolved = await resolveMemoryBackend(this.session.settings);
+				const query = params.context?.trim()
+					? `${params.query.trim()}\n\nAdditional context:\n${params.context.trim()}`
+					: params.query;
+				const result = await resolved.search?.(
+					{
+						agentDir: this.session.settings.getAgentDir(),
+						cwd: this.session.cwd,
+						settings: this.session.settings,
+					},
+					query,
+				);
+				if (!result || result.count === 0) {
+					return {
+						content: [{ type: "text", text: "No relevant information found to reflect on." }],
+						details: {},
+					};
+				}
+				const summary = result.items
+					.map(item => `- ${item.id ? `[${item.id}] ` : ""}${item.content}`)
+					.join("\n");
+				return {
+					content: [{ type: "text", text: `Based on recalled memories:\n\n${summary}` }],
+					details: {},
+				};
+			}
 			if (backend === "mnemopi") {
 				const state = this.session.getMnemopiSessionState?.();
 				if (!state) {

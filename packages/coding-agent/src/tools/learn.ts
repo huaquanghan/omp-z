@@ -4,6 +4,7 @@ import { sanitizeSkillName, writeManagedSkill } from "../autolearn/managed-skill
 import { isNameClaimedByAuthoredSkill } from "../extensibility/skills";
 import { isHindsightConfigured, loadHindsightConfig } from "../hindsight/config";
 import { localBackend } from "../memory-backend/local-backend";
+import { resolveMemoryBackend } from "../memory-backend/resolve";
 import learnDescription from "../prompts/tools/learn.md" with { type: "text" };
 import type { ToolSession } from ".";
 
@@ -24,8 +25,9 @@ export type LearnParams = typeof learnSchema.infer;
  * Orchestrating "learn" tool: persists a lesson to long-term memory and,
  * given a `skill` payload, mints/enhances a managed skill via the shared
  * `writeManagedSkill` primitive. Gated behind `autolearn.enabled` plus a live
- * memory backend — `hindsight`/`mnemopi` (remote/SQLite) or `local` (the
- * file-based rollout backend, where lessons append to `learned.md`).
+ * memory backend — `hindsight`/`mnemopi` (remote/SQLite), `zvec` (file-backed
+ * zg index), or `local` (the file-based rollout backend, where lessons append
+ * to `learned.md`).
  */
 export class LearnTool implements AgentTool<typeof learnSchema> {
 	readonly name = "learn";
@@ -45,7 +47,7 @@ export class LearnTool implements AgentTool<typeof learnSchema> {
 	static createIf(session: ToolSession): LearnTool | null {
 		if (!session.settings.get("autolearn.enabled")) return null;
 		const backend = session.settings.get("memory.backend");
-		if (backend !== "hindsight" && backend !== "mnemopi" && backend !== "local") return null;
+		if (backend !== "hindsight" && backend !== "mnemopi" && backend !== "local" && backend !== "zvec") return null;
 		if (backend === "hindsight" && !isHindsightConfigured(loadHindsightConfig(session.settings))) return null;
 		return new LearnTool(session);
 	}
@@ -79,6 +81,16 @@ export class LearnTool implements AgentTool<typeof learnSchema> {
 			// reporting (and minting a skill for) a lesson that was silently dropped.
 			if (!id) {
 				throw new Error("Mnemopi did not store the lesson (no memory id returned).");
+			}
+		} else if (backend === "zvec") {
+			const resolved = await resolveMemoryBackend(this.session.settings);
+			if (!resolved.save) throw new Error("Zvec backend does not support memory saves.");
+			const result = await resolved.save(
+				{ agentDir: this.session.settings.getAgentDir(), cwd: this.session.cwd, settings: this.session.settings },
+				{ content: params.memory, context: params.context, source: "coding-agent-learn", importance: 0.8 },
+			);
+			if (!result || result.stored === 0) {
+				throw new Error(result?.message ?? "Lesson was empty after sanitization; nothing stored.");
 			}
 		} else if (backend === "local") {
 			const result = await localBackend.save?.(

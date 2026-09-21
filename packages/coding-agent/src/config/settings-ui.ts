@@ -47,6 +47,13 @@ const CONDITIONS: Record<string, () => boolean> = {
 			return false;
 		}
 	},
+	zvecActive: () => {
+		try {
+			return Settings.instance.get("memory.backend") === "zvec";
+		} catch {
+			return false;
+		}
+	},
 	autolearnActive: () => {
 		try {
 			return Settings.instance.get("autolearn.enabled") === true;

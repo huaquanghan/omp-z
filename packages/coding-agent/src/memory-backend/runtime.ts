@@ -54,7 +54,7 @@ export function createSessionMemoryRuntimeContext(
 	agentDir: string,
 	cwd: string,
 ): MemoryRuntimeContext {
-	return createMemoryRuntimeContext({ agentDir, cwd, session });
+	return createMemoryRuntimeContext({ agentDir, cwd, session, settings: session.settings });
 }
 
 function unavailableSearch(backend: MemoryBackendId, query: string, message: string) {

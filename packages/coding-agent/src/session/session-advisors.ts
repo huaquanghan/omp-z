@@ -1010,7 +1010,7 @@ export class SessionAdvisors {
 			if (config.instructions?.trim()) systemPrompt.push(config.instructions.trim());
 
 			// The default roster additionally gets `recall` when the active memory
-			// backend built it (MemoryRecallTool.createIf — hindsight/mnemopi only;
+			// backend built it (MemoryRecallTool.createIf — hindsight/mnemopi/zvec;
 			// sharpshooter/local expose no recall tool, so the extra name filters
 			// nothing there). The advisor's instance reads the same bank as the
 			// primary. Explicit `tools` lists stay user-owned and are not widened.

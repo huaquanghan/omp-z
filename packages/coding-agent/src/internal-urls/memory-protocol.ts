@@ -6,6 +6,8 @@ import { getMnemopiSessionState, type MnemopiScopedMemoryHit, type MnemopiSessio
 import { AgentRegistry } from "../registry/agent-registry";
 import type { AgentSession } from "../session/agent-session";
 import { isMarkdownPath } from "@oh-my-pi/pi-tui/lang-from-path";
+import { getZvecSessionState, type ZvecSessionState } from "../zvec/state";
+import { readZvecMemory, type ZvecMemoryRecord } from "../zvec/store";
 import { buildDirectoryResource } from "./filesystem-resource";
 import { parseInternalUrl } from "./parse";
 import { validateRelativePath } from "./skill-protocol";
@@ -315,9 +317,62 @@ function callerMnemopiState(session: AgentSession): MnemopiSessionState | undefi
 	return state?.aliasOf ?? state;
 }
 
+/**
+ * Snapshot of live zvec session states, deduplicated. Zvec memories are files
+ * under a per-bank directory, so a state is only needed to learn which bank
+ * the caller reads from.
+ */
+function zvecSessionStatesFromRegistry(): ZvecSessionState[] {
+	const seen = new Set<unknown>();
+	const states: ZvecSessionState[] = [];
+	for (const ref of AgentRegistry.global().list()) {
+		const session = ref.session;
+		if (!session) continue;
+		const state = getZvecSessionState(session);
+		if (!state || seen.has(state)) continue;
+		seen.add(state);
+		states.push(state);
+	}
+	return states;
+}
+
+/** Look up a zvec memory file by id across every live session's bank. */
+async function tryResolveZvecMemory(id: string): Promise<{ record: ZvecMemoryRecord; bank: string } | undefined> {
+	for (const state of zvecSessionStatesFromRegistry()) {
+		const record = await readZvecMemory(state.agentDir, state.config.bank, id);
+		if (record) return { record, bank: state.config.bank };
+	}
+	return undefined;
+}
+
+/** Render a zvec memory file with the same frontmatter shape as mnemopi rows. */
+function renderZvecMemory(url: InternalUrl, record: ZvecMemoryRecord, bank: string): InternalResource {
+	const header =
+		"---\n" +
+		`id: ${record.id}\n` +
+		`bank: ${bank}\n` +
+		"store: zvec\n" +
+		(record.source ? `source: ${record.source}\n` : "") +
+		(record.created ? `created: ${record.created}\n` : "") +
+		(record.session ? `session_id: ${record.session}\n` : "") +
+		(record.importance !== undefined ? `importance: ${record.importance}\n` : "") +
+		(record.context ? `context: ${record.context}\n` : "") +
+		(record.supersededBy ? `superseded_by: ${record.supersededBy}\n` : "") +
+		(record.invalidatedAt ? `invalidated_at: ${record.invalidatedAt}\n` : "") +
+		"---\n\n";
+	const content = `${header}${record.content}`;
+	return {
+		url: url.href,
+		content,
+		contentType: "text/markdown",
+		size: Buffer.byteLength(content, "utf-8"),
+		notes: [],
+	};
+}
+
 function unknownNamespaceError(namespace: string): Error {
 	return new Error(
-		`Unknown memory namespace: ${namespace}. Supported: ${MEMORY_NAMESPACE} (file-backed memory summary), or a mnemopi memory id when memory.backend=mnemopi is active.`,
+		`Unknown memory namespace: ${namespace}. Supported: ${MEMORY_NAMESPACE} (file-backed memory summary), or a mnemopi/zvec memory id when memory.backend=mnemopi or memory.backend=zvec is active.`,
 	);
 }
 
@@ -428,27 +483,46 @@ export class MemoryProtocolHandler implements ProtocolHandler {
 						`Mnemopi memory ${namespace} not found in the calling session's scoped bank. Use \`recall\` to list available ids.`,
 					);
 				}
+				if (backend === "zvec") {
+					const state = caller.session ? getZvecSessionState(caller.session) : undefined;
+					if (state) {
+						const record = await readZvecMemory(state.agentDir, state.config.bank, namespace);
+						if (record) return renderZvecMemory(url, record, state.config.bank);
+					}
+					const fallback = await tryResolveZvecMemory(namespace);
+					if (fallback) return renderZvecMemory(url, fallback.record, fallback.bank);
+					throw new Error(
+						`Zvec memory ${namespace} not found in the calling session's bank. Use \`recall\` to list available ids.`,
+					);
+				}
 				throw unknownNamespaceError(namespace);
 			}
 
 			const mnemopiStates = mnemopiSessionStatesFromRegistry();
+			const zvecStates = zvecSessionStatesFromRegistry();
 			const hindsightActive =
 				backend === "hindsight" ||
 				(mnemopiStates.length === 0 &&
+					zvecStates.length === 0 &&
 					AgentRegistry.global()
 						.list()
 						.some(ref => ref.session?.getHindsightSessionState?.()));
 			if (hindsightActive) {
 				throw new Error(HINDSIGHT_UNADDRESSABLE);
 			}
-			if (mnemopiStates.length === 0) {
+			if (mnemopiStates.length === 0 && zvecStates.length === 0) {
 				throw unknownNamespaceError(namespace);
 			}
 			const hit = tryResolveMnemopiMemory(namespace);
 			if (hit) return renderMnemopiMemory(url, hit);
-			throw new Error(
-				`Mnemopi memory ${namespace} not found in any scoped bank. Use \`recall\` to list available ids.`,
-			);
+			const zvecHit = await tryResolveZvecMemory(namespace);
+			if (zvecHit) return renderZvecMemory(url, zvecHit.record, zvecHit.bank);
+			if (mnemopiStates.length > 0) {
+				throw new Error(
+					`Mnemopi memory ${namespace} not found in any scoped bank. Use \`recall\` to list available ids.`,
+				);
+			}
+			throw new Error(`Zvec memory ${namespace} not found in any bank. Use \`recall\` to list available ids.`);
 		}
 
 		// A project may retain files from an earlier local session. Reject known
@@ -500,6 +574,17 @@ export class MemoryProtocolHandler implements ProtocolHandler {
 			completions.push({
 				value: "<memory-id>",
 				description: "Full mnemopi memory by id (from recall)",
+			});
+		}
+		const zvecAvailable = caller.legacy
+			? zvecSessionStatesFromRegistry().length > 0
+			: caller.backend === "zvec" &&
+				caller.session !== undefined &&
+				getZvecSessionState(caller.session) !== undefined;
+		if (zvecAvailable) {
+			completions.push({
+				value: "<memory-id>",
+				description: "Full zvec memory by id (from recall)",
 			});
 		}
 		return completions;

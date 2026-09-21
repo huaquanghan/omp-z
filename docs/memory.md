@@ -1,6 +1,6 @@
 # Autonomous Memory
 
-Oh My Pi supports five memory modes. Memory is disabled by default; select one backend via `/settings` or `config.yml`:
+Oh My Pi supports six memory modes. Memory is disabled by default; select one backend via `/settings` or `config.yml`:
 
 | `memory.backend` | Storage and behavior                                                   | Guide                                                   |
 | ---------------- | ---------------------------------------------------------------------- | ------------------------------------------------------- |
@@ -9,6 +9,7 @@ Oh My Pi supports five memory modes. Memory is disabled by default; select one b
 | `hindsight`      | Remote, bank-scoped Hindsight memory                                   | [Hindsight](#hindsight-remote-backend)                  |
 | `mnemopi`        | Local Mnemopi SQLite memory                                            | [Mnemopi memory backend](./mnemosyne-memory-backend.md) |
 | `sharpshooter`   | Friction-gated project decision files (architecture/product/style), consolidated in the background | —                           |
+| `zvec`           | Local memory files indexed by the `zg` (zvec-grep) CLI for hybrid BM25 + vector recall | [Zvec memory backend](./zvec-memory-backend.md) |
 
 Enable the local summary pipeline:
 

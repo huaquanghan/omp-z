@@ -2963,17 +2963,17 @@ export const SETTINGS_SCHEMA = {
 
 	// Memory backend selector — picks between local memories pipeline,
 	// Mnemopi local SQLite, Hindsight remote memory, Sharpshooter project
-	// decisions, or off. The legacy
+	// decisions, zvec-grep hybrid memory files, or off. The legacy
 	// `memories.enabled` flag is migration input only; see config/settings.ts.
 	"memory.backend": {
 		type: "enum",
-		values: ["off", "local", "hindsight", "mnemopi", "sharpshooter"] as const,
+		values: ["off", "local", "hindsight", "mnemopi", "sharpshooter", "zvec"] as const,
 		default: "off",
 		ui: {
 			tab: "memory",
 			group: "General",
 			label: "Memory Backend",
-			description: "Off, local summary pipeline, Mnemopi SQLite, Hindsight remote memory, or Sharpshooter",
+			description: "Off, local summary pipeline, Mnemopi SQLite, Hindsight remote memory, Sharpshooter, or Zvec",
 			options: [
 				{ value: "off", label: "Off", description: "No memory subsystem runs" },
 				{ value: "local", label: "Local", description: "Local rollout summarisation pipeline (memory_summary.md)" },
@@ -2988,6 +2988,12 @@ export const SETTINGS_SCHEMA = {
 					label: "Sharpshooter",
 					description:
 						"Friction-gated project decision files (architecture/product/style), consolidated in the background",
+				},
+				{
+					value: "zvec",
+					label: "Zvec",
+					description:
+						"Local zvec-grep hybrid (BM25 + vector) recall over project memory files, indexed by the zg CLI",
 				},
 			],
 		},
@@ -3276,6 +3282,79 @@ export const SETTINGS_SCHEMA = {
 	"mnemopi.recallMaxQueryChars": { type: "number", default: 4000 },
 	"mnemopi.injectionTokenLimit": { type: "number", default: 5000 },
 	"mnemopi.debug": { type: "boolean", default: false },
+
+	// Zvec: file-backed memories under <agent memories dir>/zvec/<bank>, indexed
+	// and recalled by the `zg` (zvec-grep) CLI. Requires zg on PATH.
+	"zvec.bank": {
+		type: "string",
+		default: undefined,
+		ui: {
+			tab: "memory",
+			group: "Zvec",
+			label: "Zvec Bank",
+			description: "Shared bank name used when scoping is global. Empty = the shared `default` bank.",
+			condition: "zvecActive",
+		},
+	},
+	"zvec.scoping": {
+		type: "enum",
+		values: ["per-project", "global"] as const,
+		default: "per-project",
+		ui: {
+			tab: "memory",
+			group: "Zvec",
+			label: "Zvec Scoping",
+			description: "per-project = isolated bank per cwd; global = one shared bank for every project",
+			options: [
+				{
+					value: "per-project",
+					label: "Per project",
+					description: "Project-local zvec bank derived from the working directory",
+				},
+				{ value: "global", label: "Global", description: "One shared zvec bank for every project" },
+			],
+			condition: "zvecActive",
+		},
+	},
+	"zvec.embeddingModel": {
+		type: "string",
+		default: undefined,
+		ui: {
+			tab: "memory",
+			group: "Zvec",
+			label: "Zvec Embedding Model",
+			description: "Embedding model for new indexes (see `zg help models`). Empty = local/potion-code-16m-v2.",
+			condition: "zvecActive",
+		},
+	},
+	"zvec.autoRecall": {
+		type: "boolean",
+		default: true,
+		ui: {
+			tab: "memory",
+			group: "Zvec",
+			label: "Zvec Auto Recall",
+			description: "Recall relevant memories into the first turn of each session",
+			condition: "zvecActive",
+		},
+	},
+	"zvec.autoRetain": {
+		type: "boolean",
+		default: true,
+		ui: {
+			tab: "memory",
+			group: "Zvec",
+			label: "Zvec Auto Retain",
+			description: "Retain completed conversation turns into the zvec bank",
+			condition: "zvecActive",
+		},
+	},
+	"zvec.retainEveryNTurns": { type: "number", default: 4 },
+	"zvec.recallLimit": { type: "number", default: 8 },
+	"zvec.recallContextTurns": { type: "number", default: 3 },
+	"zvec.recallMaxQueryChars": { type: "number", default: 4000 },
+	"zvec.injectionTokenLimit": { type: "number", default: 5000 },
+	"zvec.debug": { type: "boolean", default: false },
 
 	// Hindsight (https://hindsight.vectorize.io)
 	"hindsight.apiUrl": {

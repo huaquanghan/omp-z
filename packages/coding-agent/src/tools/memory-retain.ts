@@ -2,6 +2,7 @@ import type { MemoryRetainDetails } from "@oh-my-pi/pi-tui/tools/memory";
 import { type } from "@oh-my-pi/omptype";
 import type { AgentTool, AgentToolResult } from "@oh-my-pi/pi-agent-core";
 import { isHindsightConfigured, loadHindsightConfig } from "../hindsight/config";
+import { resolveMemoryBackend } from "../memory-backend/resolve";
 import retainDescription from "../prompts/tools/retain.md" with { type: "text" };
 import type { ToolSession } from ".";
 
@@ -30,13 +31,37 @@ export class MemoryRetainTool implements AgentTool<typeof memoryRetainSchema, Me
 
 	static createIf(session: ToolSession): MemoryRetainTool | null {
 		const backend = session.settings.get("memory.backend");
-		if (backend !== "hindsight" && backend !== "mnemopi") return null;
+		if (backend !== "hindsight" && backend !== "mnemopi" && backend !== "zvec") return null;
 		if (backend === "hindsight" && !isHindsightConfigured(loadHindsightConfig(session.settings))) return null;
 		return new MemoryRetainTool(session);
 	}
 
 	async execute(_id: string, params: MemoryRetainParams): Promise<AgentToolResult<MemoryRetainDetails>> {
 		const backend = this.session.settings.get("memory.backend");
+		if (backend === "zvec") {
+			const resolved = await resolveMemoryBackend(this.session.settings);
+			if (!resolved.save) throw new Error("Zvec backend does not support memory saves.");
+			const context = {
+				agentDir: this.session.settings.getAgentDir(),
+				cwd: this.session.cwd,
+				settings: this.session.settings,
+			};
+			let stored = 0;
+			for (const item of params.items) {
+				const result = await resolved.save(context, {
+					content: item.content,
+					context: item.context,
+					source: "coding-agent-retain",
+					importance: 0.75,
+				});
+				stored += result.stored;
+			}
+			const noun = stored === 1 ? "memory" : "memories";
+			return {
+				content: [{ type: "text", text: `${stored} ${noun} stored.` }],
+				details: { count: stored },
+			};
+		}
 		if (backend === "mnemopi") {
 			const state = this.session.getMnemopiSessionState?.();
 			if (!state) {
