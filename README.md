@@ -1,3 +1,8 @@
+> [!TIP]
+> **ompz** — custom `omp` build from this fork with the zvec memory backend.
+> `curl -fsSL https://raw.githubusercontent.com/huaquanghan/omp-z/main/scripts/ompz/install-from-release.sh | bash` ·
+> [docs](OMPZ.md) · [releases](https://github.com/huaquanghan/omp-z/releases)
+
 <p align="center">
   <img src="https://github.com/can1357/oh-my-pi/blob/main/assets/hero.png?raw=true" alt="omp">
 </p>
