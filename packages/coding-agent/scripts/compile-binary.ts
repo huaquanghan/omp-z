@@ -50,7 +50,9 @@ export async function compileCodingAgent(options: CodingAgentCompileOptions): Pr
 			// Precompiled bytecode skips parsing the ~20 MB bundle at boot:
 			// `omp --version` 256 ms -> 30 ms on M4 Max (+52 MB binary).
 			// Bytecode rejects top-level await in the bundle graph.
-			bytecode: true,
+			// OMP_NO_BYTECODE=1 disables it — on bun 1.4.0 the bytecode build
+			// crashes at boot with `import.meta is only valid inside modules`.
+			bytecode: Bun.env.OMP_NO_BYTECODE !== "1",
 			minify: {
 				identifiers: options.minifyIdentifiers ?? false,
 				keepNames: true,
