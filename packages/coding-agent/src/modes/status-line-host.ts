@@ -1,5 +1,7 @@
 import type { StatusLineHost, StatusLineSession } from "@oh-my-pi/pi-tui/status-line/host";
+import type { StatusLineSettings } from "@oh-my-pi/pi-tui/status-line/types";
 import { settings } from "../config/settings";
+import type { SettingPath, SettingValue } from "../config/settings-schema";
 import type { AgentSession } from "../session/agent-session";
 import { getSessionCompactionBoundaries } from "../session/context-usage-runtime";
 import { limitMatchesActiveAccount } from "../slash-commands/helpers/active-oauth-account";
@@ -15,20 +17,38 @@ import { calculateTokensPerSecond } from "../utils/token-rate";
 export type StatusLineHostSession = StatusLineSession &
 	Partial<Pick<AgentSession, "settings" | "modelRegistry" | "sessionId" | "fetchUsageReports">>;
 
-/** Application policy and runtime services consumed by the portable status renderer. */
-export const statusLineHost: StatusLineHost<StatusLineHostSession> = {
-	getSettings: () => ({
+/**
+ * Read `statusLine.*` only when explicitly configured; unconfigured fields
+ * come back `undefined` so the active preset's own defaults can apply.
+ */
+function configured<P extends SettingPath>(path: P): SettingValue<P> | undefined {
+	return settings.isConfigured(path) ? settings.get(path) : undefined;
+}
+
+/**
+ * Live status-line settings for {@link StatusLineComponent.updateSettings}.
+ * Fields a preset may own (`separator`, `transparent`, `contextLine`,
+ * `sessionAccent`) are gated on {@link settings.isConfigured} — a resolved
+ * schema default would otherwise mask the preset's value forever.
+ */
+export function readStatusLineSettings(): StatusLineSettings {
+	return {
 		preset: settings.get("statusLine.preset"),
 		leftSegments: settings.get("statusLine.leftSegments"),
 		rightSegments: settings.get("statusLine.rightSegments"),
-		separator: settings.get("statusLine.separator"),
+		separator: configured("statusLine.separator"),
 		showHookStatus: settings.get("statusLine.showHookStatus"),
 		segmentOptions: settings.getGroup("statusLine").segmentOptions,
-		sessionAccent: settings.get("statusLine.sessionAccent"),
-		transparent: settings.get("statusLine.transparent"),
+		sessionAccent: configured("statusLine.sessionAccent"),
+		transparent: configured("statusLine.transparent"),
 		compactThinkingLevel: settings.get("statusLine.compactThinkingLevel"),
-		contextLine: settings.get("statusLine.contextLine"),
-	}),
+		contextLine: configured("statusLine.contextLine"),
+	};
+}
+
+/** Application policy and runtime services consumed by the portable status renderer. */
+export const statusLineHost: StatusLineHost<StatusLineHostSession> = {
+	getSettings: () => readStatusLineSettings(),
 	gitEnabled: () => settings.get("git.enabled"),
 	codexResetFireworksEnabled: () => settings.get("tui.codexResetFireworks"),
 	getSettingsRevision: () => settings.revision,

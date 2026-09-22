@@ -211,7 +211,7 @@ import { ServedModelTracker } from "@oh-my-pi/pi-tui/chat/served-model-marker";
 import { SessionInfoOverlay } from "@oh-my-pi/pi-tui/overlays/session-info-overlay";
 import { SkillMessageComponent } from "@oh-my-pi/pi-tui/chat/skill-message";
 import { StatusLineComponent } from "@oh-my-pi/pi-tui/status-line";
-import { statusLineHost } from "./status-line-host";
+import { readStatusLineSettings, statusLineHost } from "./status-line-host";
 import { stopSharedSpinnerTicker, type ToolExecutionHandle } from "@oh-my-pi/pi-tui/chat/tool-execution";
 import { TranscriptContainer } from "@oh-my-pi/pi-tui/chrome/transcript-container";
 import type { LspServerInfo as WelcomeLspServerInfo } from "@oh-my-pi/pi-tui/prompt/welcome";
@@ -2619,18 +2619,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	#syncStatusLineSettings(): void {
-		this.statusLine.updateSettings({
-			preset: settings.get("statusLine.preset"),
-			leftSegments: settings.get("statusLine.leftSegments"),
-			rightSegments: settings.get("statusLine.rightSegments"),
-			separator: settings.get("statusLine.separator"),
-			showHookStatus: settings.get("statusLine.showHookStatus"),
-			sessionAccent: settings.get("statusLine.sessionAccent"),
-			transparent: settings.get("statusLine.transparent"),
-			segmentOptions: settings.get("statusLine.segmentOptions"),
-			compactThinkingLevel: settings.get("statusLine.compactThinkingLevel"),
-			contextLine: settings.get("statusLine.contextLine"),
-		});
+		this.statusLine.updateSettings(readStatusLineSettings());
 	}
 	syncComposerShape(): void {
 		const shape = settings.get("composer.shape") ?? "band";

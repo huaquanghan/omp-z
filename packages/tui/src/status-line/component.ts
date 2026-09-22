@@ -2190,6 +2190,10 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 			leftSegments,
 			rightSegments,
 			separator: this.#settings.separator ?? presetDef.separator,
+			// Preset-owned defaults for fields the caller leaves undefined.
+			transparent: this.#settings.transparent ?? presetDef.transparent,
+			contextLine: this.#settings.contextLine ?? presetDef.contextLine,
+			sessionAccent: this.#settings.sessionAccent ?? presetDef.sessionAccent,
 			segmentOptions: mergedSegmentOptions,
 		};
 	}

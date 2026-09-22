@@ -608,7 +608,7 @@ export const SETTINGS_SCHEMA = {
 	"statusLine.preset": {
 		type: "enum",
 		values: STATUS_LINE_PRESET_VALUES,
-		default: "default",
+		default: "ompz",
 		ui: {
 			tab: "appearance",
 			group: "Status Line",
@@ -621,6 +621,11 @@ export const SETTINGS_SCHEMA = {
 				{ value: "full", label: "Full", description: "All segments including time" },
 				{ value: "nerd", label: "Nerd", description: "Maximum info with Nerd Font icons" },
 				{ value: "ascii", label: "ASCII", description: "No special characters" },
+				{
+					value: "ompz",
+					label: "ompz",
+					description: "Slim single line: model · effort · context bar · tpm · branch",
+				},
 				{ value: "custom", label: "Custom", description: "User-defined segments" },
 			],
 		},
@@ -641,6 +646,7 @@ export const SETTINGS_SCHEMA = {
 				{ value: "slash", label: "Slash", description: "Forward slashes" },
 				{ value: "pipe", label: "Pipe", description: "Vertical pipes" },
 				{ value: "block", label: "Block", description: "Solid blocks" },
+				{ value: "dot", label: "Dot", description: "Middle-dot separators" },
 				{ value: "none", label: "None", description: "Space only" },
 				{ value: "ascii", label: "ASCII", description: "Greater-than signs" },
 			],

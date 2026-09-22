@@ -12,6 +12,8 @@ import {
 	relativePathWithinRoot,
 } from "@oh-my-pi/pi-utils";
 import { type SymbolKey, type Theme, type ThemeColor, theme } from "../theme";
+import { FG_RESET, fgAnsi } from "../theme/color";
+import { isValidThemeColor } from "../theme/schema";
 import { shortenPath, TRUNCATE_LENGTHS, truncateToWidth } from "../render/render-utils";
 import { fileHyperlink } from "../render/hyperlink";
 import { getSessionAccentAnsi, getSessionAccentHex } from "../theme/session-color";
@@ -20,7 +22,7 @@ import { formatMetric } from "../components/metric";
 import { formatBillingSummary } from "./metrics";
 import { sanitizeStatusText } from "../chrome/shared";
 import { formatContextUsage, getContextUsageLevel, getContextUsageThemeColor } from "../chrome/context-thresholds";
-import type { RenderedSegment, SegmentContext, StatusLineSegment, StatusLineSegmentId } from "./types";
+import type { RenderedSegment, SegmentContext, StatusLineColor, StatusLineSegment, StatusLineSegmentId } from "./types";
 
 export type { SegmentContext } from "./types";
 
@@ -36,6 +38,29 @@ function withIcon(icon: string, text: string): string {
 
 function statusValue(ctx: SegmentContext, value: string): string {
 	return ctx.startupPlaceholder ? STARTUP_PLACEHOLDER : value;
+}
+
+/**
+ * Resolve a {@link StatusLineColor} to a foreground ANSI. Theme role names go
+ * through the active theme; `#hex` strings and 0-255 palette indices pin the
+ * exact color regardless of theme.
+ */
+function statusLineColorAnsi(value: StatusLineColor | undefined): string | undefined {
+	if (value === undefined) return undefined;
+	if (typeof value === "string" && isValidThemeColor(value)) return theme.getFgAnsi(value);
+	// Invalid values fall back to the caller's theme role rather than throwing
+	// inside the per-frame status render.
+	try {
+		return fgAnsi(value, theme.getColorMode());
+	} catch {
+		return undefined;
+	}
+}
+
+/** Paint `text` with an explicit segment color when set, else a theme role. */
+function paintStatusText(color: StatusLineColor | undefined, fallback: ThemeColor, text: string): string {
+	const ansi = statusLineColorAnsi(color);
+	return ansi ? `${ansi}${text}${FG_RESET}` : theme.fg(fallback, text);
 }
 /**
  * Hash-derived accent ANSI for the session title (or preview stand-in title).
@@ -73,6 +98,13 @@ function clampPathLength(pwd: string, maxLen: number): string {
 function leadingGlyph(display: string): string {
 	const space = display.indexOf(" ");
 	return space === -1 ? display : display.slice(0, space);
+}
+
+/** Bare level name from a thinking display string: "◒ high" → "high", "[high]" → "high". */
+function thinkingLevelText(display: string): string {
+	const space = display.indexOf(" ");
+	const word = space === -1 ? display : display.slice(space + 1);
+	return /^\[(.+)\]$/.exec(word)?.[1] ?? word;
 }
 
 function stripDisplayRoot(pwd: string): string {
@@ -174,9 +206,7 @@ const piSegment: StatusLineSegment = {
 		const content =
 			ctx.turnElapsedMs != null
 				? `${brandSpinnerFrame(ctx.now?.getTime())} ${statusValue(ctx, brandTimer(ctx.turnElapsedMs))}`
-				: theme.icon.omp
-					? theme.icon.omp
-					: "";
+				: (ctx.options?.pi?.icon ?? theme.icon.omp) || "";
 		return { content: `${fgAnsi}${content}\x1b[39m`, visible: true };
 	},
 };
@@ -214,7 +244,7 @@ const modelSegment: StatusLineSegment = {
 	id: "model",
 	render(ctx) {
 		const state = ctx.session.state;
-		const opts = ctx.options.model ?? {};
+		const opts = ctx.options?.model ?? {};
 
 		let modelName = state.model?.name || state.model?.id || "no-model";
 		if (modelName.startsWith("Claude ")) {
@@ -242,14 +272,36 @@ const modelSegment: StatusLineSegment = {
 			}
 		}
 
+		// `thinkingStyle: "text"` drops the level glyph, leaving the bare name.
+		if (opts.thinkingStyle === "text" && thinkingDisplay) {
+			thinkingDisplay = thinkingLevelText(thinkingDisplay);
+		}
 		if (ctx.startupPlaceholder && thinkingDisplay) {
-			thinkingDisplay = withIcon(leadingGlyph(thinkingDisplay), STARTUP_PLACEHOLDER);
+			thinkingDisplay =
+				opts.thinkingStyle === "text"
+					? STARTUP_PLACEHOLDER
+					: withIcon(leadingGlyph(thinkingDisplay), STARTUP_PLACEHOLDER);
 		}
 
 		// Compact mode swaps the model icon for the thinking-level glyph and drops
-		// the " · <level>" tail, keeping the level visible as a single icon.
-		const compact = ctx.compactThinkingLevel && thinkingDisplay !== "";
-		const modelIcon = compact ? leadingGlyph(thinkingDisplay) : theme.icon.model;
+		// the " · <level>" tail, keeping the level visible as a single icon. An
+		// explicit `icon` or `"text"` thinking style takes precedence over it.
+		const compact =
+			ctx.compactThinkingLevel && thinkingDisplay !== "" && opts.thinkingStyle !== "text" && opts.icon === undefined;
+		const modelIcon = opts.icon ?? (compact ? leadingGlyph(thinkingDisplay) : theme.icon.model);
+
+		// An explicit `color` pins the model name and wins over the session
+		// accent; the thinking tail follows `thinkingColor`, then `color`.
+		const paintModel = (text: string): string =>
+			opts.color !== undefined
+				? paintStatusText(opts.color, "statusLineModel", text)
+				: accentFg(ctx, "statusLineModel", text);
+		const paintThinking = (text: string): string => {
+			const thinkingColor = opts.thinkingColor ?? opts.color;
+			return thinkingColor !== undefined
+				? paintStatusText(thinkingColor, "statusLineModel", text)
+				: accentFg(ctx, "statusLineModel", text);
+		};
 
 		// Fast-mode icon and thinking-level suffix trail the model name and are
 		// colored together with it as `statusLineModel`. The advisor symbol sits
@@ -260,13 +312,10 @@ const modelSegment: StatusLineSegment = {
 		if (ctx.session.isFastModeActive() && theme.icon.fast) {
 			tail += ` ${theme.icon.fast}`;
 		}
-		if (!compact && thinkingDisplay) {
-			tail += `${theme.sep.dot}${thinkingDisplay}`;
-		}
 
 		// `statusLineModel` is aliased to `accent` in many themes, so the badge
 		// uses status colors to stay visibly distinct from the model name color.
-		let content = accentFg(ctx, "statusLineModel", withIcon(modelIcon, modelName));
+		let content = paintModel(withIcon(modelIcon, modelName));
 		// Advisor symbol, colored by the worst status in the roster:
 		// success = all running, warning = quota-exhausted, error = failed,
 		// dim = everything paused/no-model. Per-advisor detail lives in
@@ -290,7 +339,10 @@ const modelSegment: StatusLineSegment = {
 			if (advisorIcon) content += theme.fg(badgeColor, ` ${advisorIcon}`);
 		}
 		if (tail) {
-			content += accentFg(ctx, "statusLineModel", tail);
+			content += paintModel(tail);
+		}
+		if (!compact && thinkingDisplay) {
+			content += paintThinking(`${theme.sep.dot}${thinkingDisplay}`);
 		}
 
 		return { content, visible: true };
@@ -409,7 +461,7 @@ const modeSegment: StatusLineSegment = {
 const pathSegment: StatusLineSegment = {
 	id: "path",
 	render(ctx) {
-		const opts = ctx.options.path ?? {};
+		const opts = ctx.options?.path ?? {};
 		const stripPrefix = opts.stripWorkPrefix !== false;
 
 		// Linked git worktree: the on-disk path nests the worktree base, the
@@ -458,14 +510,15 @@ const gitSegment: StatusLineSegment = {
 		const { branch, status } = ctx.git;
 		if (!branch && !status) return { content: "", visible: false };
 
-		const opts = ctx.options.git ?? {};
+		const opts = ctx.options?.git ?? {};
 		const gitStatus = status;
 		const isDirty = gitStatus && (gitStatus.staged > 0 || gitStatus.unstaged > 0 || gitStatus.untracked > 0);
 
 		const showBranch = opts.showBranch !== false;
+		const icon = opts.icon;
 		let content = "";
 		if (showBranch && branch) {
-			content = withIcon(theme.icon.branch, statusValue(ctx, branch));
+			content = withIcon(icon ?? theme.icon.branch, statusValue(ctx, branch));
 		}
 
 		// Add status indicators
@@ -483,7 +536,7 @@ const gitSegment: StatusLineSegment = {
 			if (indicators.length > 0) {
 				const indicatorText = indicators.join(" ");
 				if (!content && showBranch === false) {
-					content = withIcon(theme.icon.git, indicatorText);
+					content = withIcon(icon ?? theme.icon.git, indicatorText);
 				} else {
 					content += content ? ` ${indicatorText}` : indicatorText;
 				}
@@ -492,6 +545,10 @@ const gitSegment: StatusLineSegment = {
 
 		if (!content) return { content: "", visible: false };
 
+		// An explicit `color` pins the branch and skips the clean/dirty swap.
+		if (opts.color !== undefined) {
+			return { content: paintStatusText(opts.color, "statusLineGitClean", content), visible: true };
+		}
 		const colorName = isDirty ? "statusLineGitDirty" : "statusLineGitClean";
 		return { content: theme.fg(colorName, content), visible: true };
 	},
@@ -544,17 +601,61 @@ const tokenTotalSegment: StatusLineSegment = {
 	},
 };
 
+/** Slim-style tpm text: "850" below 1k, "2.2k" to 9.9k, "12k" at 10k+. */
+function formatTokensPerMinute(tpm: number): string {
+	const whole = Math.floor(tpm);
+	if (whole >= 10_000) return `${Math.floor(whole / 1_000)}k`;
+	if (whole >= 1_000) return `${Math.floor(whole / 1_000)}.${Math.floor((whole % 1_000) / 100)}k`;
+	return `${whole}`;
+}
+
 const tokenRateSegment: StatusLineSegment = {
 	id: "token_rate",
 	render(ctx) {
 		const { tokensPerSecond } = ctx.usageStats;
 		if (!tokensPerSecond) return { content: "", visible: false };
 
+		const opts = ctx.options?.token_rate ?? {};
+		const value =
+			opts.unit === "tpm"
+				? `${statusValue(ctx, formatTokensPerMinute(tokensPerSecond * 60))} tpm`
+				: `${statusValue(ctx, tokensPerSecond.toFixed(1))} tok/s`;
+		const icon = opts.icon ?? theme.icon.throughput;
+
+		// Explicit colors split the icon and value into their own spans.
+		if (opts.iconColor !== undefined || opts.valueColor !== undefined) {
+			const iconAnsi = statusLineColorAnsi(opts.iconColor ?? opts.valueColor ?? "statusLineOutput") ?? "";
+			const valueAnsi = statusLineColorAnsi(opts.valueColor ?? "statusLineOutput") ?? "";
+			const iconText = icon ? `${iconAnsi}${icon}${FG_RESET} ` : "";
+			return { content: `${iconText}${valueAnsi}${value}${FG_RESET}`, visible: true };
+		}
+
 		const content = formatMetric({
-			leading: theme.icon.throughput || undefined,
-			value: `${statusValue(ctx, tokensPerSecond.toFixed(1))} tok/s`,
+			leading: icon || undefined,
+			value,
 		});
 		return { content: theme.fg("statusLineOutput", content ?? ""), visible: true };
+	},
+};
+
+/**
+ * Inline context gauge (`━━━───── 47%`): a fixed-width `━`/`─` bar plus the
+ * usage percent, colored by the shared context thresholds unless
+ * `context_bar.color` pins it. The bar clamps at full on >100% while the
+ * label keeps reporting the raw percent.
+ */
+const contextBarSegment: StatusLineSegment = {
+	id: "context_bar",
+	render(ctx) {
+		const opts = ctx.options?.context_bar ?? {};
+		const width = Math.max(1, Math.floor(opts.width ?? 8));
+		const pct = ctx.contextPercent;
+		const hasPercent = pct !== null && pct !== undefined && Number.isFinite(pct);
+		const filled = Math.min(width, Math.floor((Math.min(Math.max(pct ?? 0, 0), 100) * width) / 100));
+		const bar = `${"━".repeat(filled)}${"─".repeat(width - filled)}`;
+		const text = ctx.startupPlaceholder ? STARTUP_PLACEHOLDER : `${bar} ${hasPercent ? `${Math.round(pct)}` : "?"}%`;
+		const fallback = getContextUsageThemeColor(getContextUsageLevel(pct ?? 0, ctx.contextWindow));
+		return { content: paintStatusText(opts.color, fallback, text), visible: true };
 	},
 };
 
@@ -660,7 +761,7 @@ const timeSpentSegment: StatusLineSegment = {
 const timeSegment: StatusLineSegment = {
 	id: "time",
 	render(ctx) {
-		const opts = ctx.options.time ?? {};
+		const opts = ctx.options?.time ?? {};
 		const now = ctx.now ?? new Date();
 
 		let hours = now.getHours();
@@ -908,6 +1009,7 @@ export const SEGMENTS: Record<StatusLineSegmentId, StatusLineSegment> = {
 	token_rate: tokenRateSegment,
 	cost: costSegment,
 	context_pct: contextPctSegment,
+	context_bar: contextBarSegment,
 	context_total: contextTotalSegment,
 	time_spent: timeSpentSegment,
 	time: timeSegment,

@@ -1,5 +1,6 @@
 import type { Model } from "@oh-my-pi/pi-ai";
 import type { SessionState } from "@oh-my-pi/pi-wire";
+import type { ColorValue, ThemeColor } from "../theme/schema";
 import type { ContextLineMode, StatusLinePreset, StatusLineSegmentId, StatusLineSeparatorStyle } from "./schema";
 import type { ActiveRepoContext, StatusLineSession } from "./host";
 import type { LoopConditionConfig, LoopLimitRuntime } from "./loop";
@@ -34,10 +35,58 @@ export interface CollabStatus {
 	stateOverride?: CollabSessionState | null;
 }
 
+/**
+ * Per-segment color: a theme role name, a `#hex` string, or a 0-255 palette
+ * index (rendered as `\x1b[38;5;Nm`). Role names adapt to the active theme;
+ * raw values pin the exact color regardless of theme.
+ */
+export type StatusLineColor = ThemeColor | ColorValue;
+
 export interface StatusLineSegmentOptions {
-	model?: { showThinkingLevel?: boolean };
+	/** `icon` replaces the idle brand glyph (`theme.icon.omp`); `""` hides it. */
+	pi?: { icon?: string };
+	model?: {
+		showThinkingLevel?: boolean;
+		/** Override the model icon; `""` hides it entirely. */
+		icon?: string;
+		/**
+		 * `"text"` renders the thinking tail as the bare level name
+		 * (`· high`) instead of the themed glyph pair (`· ◒ high`), and wins
+		 * over `statusLine.compactThinkingLevel`.
+		 */
+		thinkingStyle?: "icon" | "text";
+		/** Fixed color for the icon + model name; overrides the session accent. */
+		color?: StatusLineColor;
+		/** Fixed color for the `· <level>` tail; unset follows `color`/model color. */
+		thinkingColor?: StatusLineColor;
+	};
 	path?: { abbreviate?: boolean; maxLength?: number; stripWorkPrefix?: boolean };
-	git?: { showBranch?: boolean; showStaged?: boolean; showUnstaged?: boolean; showUntracked?: boolean };
+	git?: {
+		showBranch?: boolean;
+		showStaged?: boolean;
+		showUnstaged?: boolean;
+		showUntracked?: boolean;
+		/** Override the branch icon (`theme.icon.branch`). */
+		icon?: string;
+		/** Fixed branch color; skips the clean/dirty color swap when set. */
+		color?: StatusLineColor;
+	};
+	/**
+	 * Inline context gauge (`━━━───── 47%`). `width` is the bar's cell count
+	 * (default 8); `color` pins every level, unset uses the context-usage
+	 * threshold colors.
+	 */
+	context_bar?: { width?: number; color?: StatusLineColor };
+	token_rate?: {
+		/** `"tps"` renders `<rate> tok/s`; `"tpm"` renders `<rate>*60` as `N.Nk tpm`. */
+		unit?: "tps" | "tpm";
+		/** Override the throughput icon. */
+		icon?: string;
+		/** Fixed color for the icon; unset shares the value color. */
+		iconColor?: StatusLineColor;
+		/** Fixed color for the value; unset uses `statusLineOutput`. */
+		valueColor?: StatusLineColor;
+	};
 	time?: { format?: "12h" | "24h"; showSeconds?: boolean };
 }
 
@@ -224,4 +273,11 @@ export interface PresetDef {
 	rightSegments: StatusLineSegmentId[];
 	separator: StatusLineSeparatorStyle;
 	segmentOptions?: StatusLineSegmentOptions;
+	/**
+	 * Preset-owned defaults for pass-through settings. Applied only when the
+	 * setting is not explicitly configured, so user choices still win.
+	 */
+	transparent?: boolean;
+	contextLine?: ContextLineMode;
+	sessionAccent?: boolean;
 }

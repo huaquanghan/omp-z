@@ -172,3 +172,56 @@ describe("status line model segment compact thinking level", () => {
 		expect(Bun.stripANSI(rendered.content)).not.toContain(theme.sep.dot);
 	});
 });
+
+describe("status line model segment slim options", () => {
+	function createSlimContext(options: SegmentContext["options"]): SegmentContext {
+		return {
+			...createModelContext(false),
+			// Slim presets set compactThinkingLevel globally; "text" must still win.
+			compactThinkingLevel: true,
+			options,
+			session: {
+				state: {
+					model: { id: "test-model", name: "Test Model", thinking: true },
+					thinkingLevel: ThinkingLevel.High,
+				},
+				isFastModeActive: () => false,
+				isAutoThinking: false,
+				autoResolvedThinkingLevel: () => undefined,
+				isAdvisorActive: () => false,
+				getAdvisorStatusOverview: () => ({ configured: false, advisors: [] }),
+			} as unknown as SegmentContext["session"],
+		};
+	}
+
+	it("renders the bare level name as the `· <level>` tail with thinkingStyle text", () => {
+		const ctx = createSlimContext({ model: { thinkingStyle: "text", icon: "" } });
+		expect(Bun.stripANSI(renderSegment("model", ctx).content)).toBe(`Test Model${theme.sep.dot}high`);
+	});
+
+	it("keeps the themed glyph tail with the default icon style", () => {
+		const ctx = createSlimContext({ model: { icon: "" } });
+		expect(Bun.stripANSI(renderSegment("model", ctx).content)).toBe(
+			`Test Model${theme.sep.dot}${theme.thinking.high}`,
+		);
+	});
+
+	it("hides the model icon when icon is an empty string", () => {
+		const ctx = createSlimContext({ model: { icon: "", showThinkingLevel: false } });
+		expect(Bun.stripANSI(renderSegment("model", ctx).content)).toBe("Test Model");
+	});
+
+	it("replaces the model icon when icon is set", () => {
+		const ctx = createSlimContext({ model: { icon: "✦", showThinkingLevel: false } });
+		expect(Bun.stripANSI(renderSegment("model", ctx).content)).toBe("✦ Test Model");
+	});
+
+	it("pins model and thinking colors independently", () => {
+		const ctx = createSlimContext({
+			model: { icon: "", thinkingStyle: "text", color: 208, thinkingColor: 35 },
+		});
+		expect(renderSegment("model", ctx).content).toBe(
+			`\x1b[38;5;208mTest Model\x1b[39m\x1b[38;5;35m${theme.sep.dot}high\x1b[39m`,
+		);
+	});
+});

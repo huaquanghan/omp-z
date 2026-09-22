@@ -11,6 +11,7 @@ import { StatusLineComponent } from "@oh-my-pi/pi-tui/status-line";
 import { statusLineHost } from "../../modes/status-line-host";
 import { theme } from "@oh-my-pi/pi-tui/theme";
 import type { AgentSession } from "../../session/agent-session";
+import { createGallerySession } from "./preview-session";
 import type { GalleryFixture, GalleryFixtureState } from "./types";
 
 const GAUGE_WINDOW = 200_000;
@@ -85,11 +86,38 @@ function renderContextGaugeState(state: GalleryFixtureState, width: number): rea
 	];
 }
 
+/** The `ompz` preset through the standalone bottom-bar (plain-full) pipeline. */
+function renderOmpzState(state: GalleryFixtureState, width: number): readonly string[] {
+	const { tokens, note } = GAUGE_CASES[state];
+	const session = createGallerySession({ contextTokens: tokens });
+	// One billed assistant turn so the token_rate segment can compute a rate.
+	(session.messages as unknown[]).push({
+		role: "assistant",
+		timestamp: Date.now() - 30_000,
+		duration: 30_000,
+		usage: { output: 1_500, totalTokens: 64_000 },
+		content: [],
+	});
+	const component = new StatusLineComponent(session, statusLineHost);
+	component.updateSettings({ preset: "ompz" });
+	try {
+		return [theme.fg("dim", `  ${note}`), component.renderBottomBar(width, "full")];
+	} finally {
+		component.dispose();
+	}
+}
+
 export const statusLineFixtures: Record<string, GalleryFixture> = {
 	context_gauge: {
 		label: "Context Gauge",
 		renderState: renderContextGaugeState,
 		args: { note: "status-line context gauge preview" },
 		result: { content: [{ type: "text", text: "Rendered annotated and embedded context gauges." }] },
+	},
+	ompz_statusline: {
+		label: "ompz Status Line",
+		renderState: renderOmpzState,
+		args: { note: "ompz preset slim statusline preview" },
+		result: { content: [{ type: "text", text: "Rendered the ompz statusline preset." }] },
 	},
 };

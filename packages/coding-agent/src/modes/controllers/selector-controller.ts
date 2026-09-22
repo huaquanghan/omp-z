@@ -22,6 +22,7 @@ import { formatModelSelectorValue } from "@oh-my-pi/pi-tui/overlays/model-select
 import { getRoleInfo } from "../../config/model-roles";
 import { settings } from "../../config/settings";
 import { createSettingsHost } from "../../config/settings-ui";
+import { readStatusLineSettings } from "../status-line-host";
 import { createPluginSettingsHost } from "../../extensibility/plugins/settings-host";
 import type { disableProvider as DisableProvider, enableProvider as EnableProvider } from "../../discovery";
 import { clearPluginRootsAndCaches, resolveActiveProjectRegistryPath } from "../../discovery/helpers";
@@ -286,15 +287,7 @@ export class SelectorController {
 					onStatusLinePreview: previewSettings => {
 						// Update status line with preview settings
 						this.ctx.statusLine.updateSettings({
-							preset: settings.get("statusLine.preset"),
-							leftSegments: settings.get("statusLine.leftSegments"),
-							rightSegments: settings.get("statusLine.rightSegments"),
-							separator: settings.get("statusLine.separator"),
-							showHookStatus: settings.get("statusLine.showHookStatus"),
-							sessionAccent: settings.get("statusLine.sessionAccent"),
-							transparent: settings.get("statusLine.transparent"),
-							compactThinkingLevel: settings.get("statusLine.compactThinkingLevel"),
-							contextLine: settings.get("statusLine.contextLine"),
+							...readStatusLineSettings(),
 							...previewSettings,
 						});
 						this.ctx.ui.requestRender();
@@ -316,17 +309,7 @@ export class SelectorController {
 					onCancel: () => {
 						done();
 						// Restore status line to saved settings
-						this.ctx.statusLine.updateSettings({
-							preset: settings.get("statusLine.preset"),
-							leftSegments: settings.get("statusLine.leftSegments"),
-							rightSegments: settings.get("statusLine.rightSegments"),
-							separator: settings.get("statusLine.separator"),
-							showHookStatus: settings.get("statusLine.showHookStatus"),
-							sessionAccent: settings.get("statusLine.sessionAccent"),
-							transparent: settings.get("statusLine.transparent"),
-							compactThinkingLevel: settings.get("statusLine.compactThinkingLevel"),
-							contextLine: settings.get("statusLine.contextLine"),
-						});
+						this.ctx.statusLine.updateSettings(readStatusLineSettings());
 						this.ctx.ui.requestRender();
 					},
 				},
@@ -864,18 +847,7 @@ export class SelectorController {
 			case "statusLineGitShowUntracked":
 			case "statusLineTimeFormat":
 			case "statusLineTimeShowSeconds": {
-				const statusLineSettings = {
-					preset: settings.get("statusLine.preset"),
-					leftSegments: settings.get("statusLine.leftSegments"),
-					rightSegments: settings.get("statusLine.rightSegments"),
-					separator: settings.get("statusLine.separator"),
-					showHookStatus: settings.get("statusLine.showHookStatus"),
-					sessionAccent: settings.get("statusLine.sessionAccent"),
-					transparent: settings.get("statusLine.transparent"),
-					segmentOptions: settings.get("statusLine.segmentOptions"),
-					compactThinkingLevel: settings.get("statusLine.compactThinkingLevel"),
-				};
-				this.ctx.statusLine.updateSettings(statusLineSettings);
+				this.ctx.statusLine.updateSettings(readStatusLineSettings());
 				this.ctx.ui.requestRender();
 				break;
 			}

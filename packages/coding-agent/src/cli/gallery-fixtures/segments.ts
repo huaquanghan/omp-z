@@ -204,6 +204,26 @@ function variantsFor(id: StatusLineSegmentId): readonly SegmentVariantSpec[] {
 					context: { contextPercent: 72, contextTokens: 144_000, compactionSpeculation: "armed" },
 				},
 			];
+		case "context_bar":
+			return [
+				{ label: "normal", context: { contextPercent: 22, contextTokens: 44_000 } },
+				{ label: "warning", context: { contextPercent: 72, contextTokens: 144_000 } },
+				{ label: "error", context: { contextPercent: 96, contextTokens: 192_000 } },
+				{ label: "unknown percent", context: { contextPercent: null } },
+				{
+					label: "pinned color + width",
+					context: { contextPercent: 40, options: { context_bar: { width: 12, color: 39 } } },
+				},
+			];
+		case "token_rate":
+			return [
+				{ label: "tok/s" },
+				{ label: "tpm", context: { options: { token_rate: { unit: "tpm" } } } },
+				{
+					label: "tpm slim colors",
+					context: { options: { token_rate: { unit: "tpm", icon: "ϟ", iconColor: 93, valueColor: 247 } } },
+				},
+			];
 		case "time":
 			return [
 				{ label: "24-hour with seconds" },

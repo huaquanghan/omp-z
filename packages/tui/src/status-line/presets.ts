@@ -93,6 +93,25 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 		},
 	},
 
+	ompz: {
+		// Slim single-line port (slim.sh): ✦ model · effort · bar pct · ϟ tpm · ⌥ branch.
+		// `pi` keeps its working spinner + turn timer; the palette pins the
+		// slim ANSI colors so they hold across themes.
+		leftSegments: ["pi", "model", "context_bar", "token_rate", "git"],
+		rightSegments: [],
+		separator: "dot",
+		transparent: true,
+		contextLine: "off",
+		sessionAccent: false,
+		segmentOptions: {
+			pi: { icon: "✦" },
+			model: { icon: "", thinkingStyle: "text", color: 208, thinkingColor: 35 },
+			context_bar: { width: 8 },
+			token_rate: { unit: "tpm", icon: "ϟ", iconColor: 93, valueColor: 247 },
+			git: { icon: "⌥", color: 36, showStaged: false, showUnstaged: false, showUntracked: false },
+		},
+	},
+
 	custom: {
 		// User-defined - these are just defaults that get overridden
 		leftSegments: [...CUSTOM_STATUS_LINE_DEFAULTS.left],
