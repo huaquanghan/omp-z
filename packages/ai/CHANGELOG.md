@@ -5,6 +5,17 @@
 ### Added
 
 - Added `operationTimeoutMs`, an aggregate wall-clock budget for one logical provider request that spans every nested pi-ai retry of that request. It is checked before each retry sleep: a retry whose backoff would land past the budget fails immediately with `ProviderOperationDeadlineError` naming the budget and the elapsed time, instead of sleeping and leaving the caller silent. Enforced in the shared replay-safe stream retry, the Anthropic provider loop and HTTP client backoff, the OpenAI Responses transient stream retry, the Codex Responses websocket/provider/whitespace retries, and the Google and Gemini CLI empty-stream retries; a caller abort still wins everywhere. Omitted or `0` disables it. Independent of `streamIdleTimeoutMs`, which bounds silence inside one live stream and never interrupts a stream that is producing output ([#12786](https://github.com/can1357/oh-my-pi/pull/12786) by [@geoyws](https://github.com/geoyws)).
+### Fixed
+
+- Signing in to a local provider (lm-studio, llama.cpp, vllm) with an empty key paste no longer reports the provider as logged in while its requests go out unauthenticated. ([#12436](https://github.com/can1357/oh-my-pi/pull/12436) by [@xiechimon](https://github.com/xiechimon))
+- Fixed every turn failing with `400 Invalid schema for function '<tool>' … Missing '<param>'` on Vercel AI Gateway models served from a non-Anthropic upstream (e.g. `openai/gpt-5.6-sol`): the translated strict-tool rejection now triggers the existing non-strict retry instead of failing the turn ([#12760](https://github.com/can1357/oh-my-pi/pull/12760) by [@primitive-type](https://github.com/primitive-type)).
+- Expired AWS SSO access tokens are now refreshed via the SSO OIDC `refresh_token` grant instead of failing with `sso-token-expired`, so Bedrock profiles keep working between `aws sso login` runs the same way the AWS CLI does ([#12736](https://github.com/can1357/oh-my-pi/pull/12736) by [@nwbb](https://github.com/nwbb)).
+- Fixed Bedrock rejecting tool-enabled requests when tool descriptions are inlined into the system prompt ([#12732](https://github.com/can1357/oh-my-pi/pull/12732) by [@mustafaabidali](https://github.com/mustafaabidali)).
+- Alibaba Token Plan (Beijing) quota reporting no longer pins requests to a single workspace, and HTTP-200 gateway rejections now log their error code ([#12395](https://github.com/can1357/oh-my-pi/pull/12395) by [@Dante-dan](https://github.com/Dante-dan)).
+- The tool-call loop guard keeps redirecting when a model continues the same identical call past the detection threshold instead of firing only once ([#12709](https://github.com/can1357/oh-my-pi/pull/12709) by [@F0Rextasy](https://github.com/F0Rextasy)).
+- Fixed OpenAI-compatible Gemini gateways losing message-level thought signatures when replaying tool-call history.
+- The Chat Completions auth-gateway now accepts `reasoning_effort: "none"` and preserves explicit reasoning-off through provider dispatch ([#12789](https://github.com/can1357/oh-my-pi/pull/12789) by [@holny](https://github.com/holny)).
+- Bedrock in-stream `internalServerException`/`serviceUnavailableException`/`throttlingException` frames are now classified as retryable service errors instead of terminal 400s ([#12775](https://github.com/can1357/oh-my-pi/pull/12775) by [@nick-maderight](https://github.com/nick-maderight)).
 
 ## [18.2.8] - 2026-09-21
 

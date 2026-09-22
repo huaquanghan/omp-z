@@ -49,6 +49,8 @@ export async function compileCodingAgent(options: CodingAgentCompileOptions): Pr
 			},
 			// Precompiled bytecode skips parsing the ~20 MB bundle at boot:
 			// `omp --version` 256 ms -> 30 ms on M4 Max (+52 MB binary).
+			// Keep import.meta.resolve in bundled dependencies valid under bytecode.
+			format: "esm",
 			// Bytecode rejects top-level await in the bundle graph.
 			// OMP_NO_BYTECODE=1 disables it — on bun 1.4.0 the bytecode build
 			// crashes at boot with `import.meta is only valid inside modules`.
