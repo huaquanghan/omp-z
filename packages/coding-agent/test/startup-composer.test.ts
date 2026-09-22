@@ -257,6 +257,9 @@ describe("Composer prepaint", () => {
 		resetSettingsForTest();
 		await initTheme();
 		settings = await Settings.init({ inMemory: true });
+		// The schema default is quiet (bundled banner replaces the stock welcome);
+		// these tests exercise the welcome scene, so run them on the non-quiet path.
+		settings.set("startup.quiet", false);
 		config = {
 			quiet: settings.get("startup.quiet"),
 			composerShape: settings.get("composer.shape") ?? "box",

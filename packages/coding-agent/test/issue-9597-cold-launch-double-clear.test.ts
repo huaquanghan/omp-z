@@ -43,6 +43,9 @@ describe("issue #9597 — cold-launch welcome duplication", () => {
 		resetSettingsForTest();
 		await initTheme();
 		settings = await Settings.init({ inMemory: true });
+		// These tests exercise the welcome-header path; the schema default is
+		// quiet (bundled banner replaces the stock welcome).
+		settings.set("startup.quiet", false);
 		config = {
 			quiet: settings.get("startup.quiet"),
 			composerShape: settings.get("composer.shape") ?? "box",

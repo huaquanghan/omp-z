@@ -37,6 +37,9 @@ describe("libkitty end-to-end", () => {
 		resetSettingsForTest();
 		tempDir = TempDir.createSync("@pi-libkitty-e2e-");
 		await Settings.init({ inMemory: true, cwd: tempDir.path() });
+		// These tests assert welcome-header rendering; the schema default is
+		// quiet (bundled banner replaces the stock welcome).
+		Settings.instance.set("startup.quiet", false);
 		authStorage = await AuthStorage.create(path.join(tempDir.path(), "testauth.db"));
 		const modelRegistry = new ModelRegistry(authStorage);
 		const model = modelRegistry.find("anthropic", "claude-sonnet-4-5");

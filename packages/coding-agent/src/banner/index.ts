@@ -1,0 +1,215 @@
+import type { Component } from "@oh-my-pi/pi-tui";
+import { VERSION } from "@oh-my-pi/pi-utils/dirs";
+import type { ExtensionFactory } from "../extensibility/extensions";
+
+// =============================================================================
+// ANSI Shadow Font (8-line Unicode half-block / 3D shadow style)
+// =============================================================================
+
+const BANNER_TINHTUTE = [
+	"    ███      ▄█  ███▄▄▄▄      ▄█    █▄        ███     ███    █▄      ███        ▄████████ ",
+	"▀█████████▄ ███  ███▀▀▀██▄   ███    ███   ▀█████████▄ ███    ███ ▀█████████▄   ███    ███ ",
+	"   ▀███▀▀██ ███▌ ███   ███   ███    ███      ▀███▀▀██ ███    ███    ▀███▀▀██   ███    █▀  ",
+	"    ███   ▀ ███▌ ███   ███  ▄███▄▄▄▄███▄▄     ███   ▀ ███    ███     ███   ▀  ▄███▄▄▄     ",
+	"    ███     ███▌ ███   ███ ▀▀███▀▀▀▀███▀      ███     ███    ███     ███     ▀▀███▀▀▀     ",
+	"    ███     ███  ███   ███   ███    ███       ███     ███    ███     ███       ███    █▄  ",
+	"    ███     ███  ███   ███   ███    ███       ███     ███    ███     ███       ███    ███ ",
+	"   ▄████▀   █▀    ▀█   █▀    ███    █▀       ▄████▀   ████████▀     ▄████▀     ██████████ ",
+];
+
+const BANNER_OMP = [
+	"  ▄████████▄    ▄▄▄▄███▄▄▄▄     ▄███████▄ ",
+	" ███    ███   ▄██▀▀▀███▀▀▀██▄  ███    ███ ",
+	" ███    ███   ███   ███   ███  ███    ███ ",
+	" ███    ███   ███   ███   ███  ███    ███ ",
+	" ███    ███   ███   ███   ███  ██████████▀",
+	" ███    ███   ███   ███   ███  ███        ",
+	" ███    ███   ███   ███   ███  ███        ",
+	"  ▀████████▀    ▀█   █▀    █▀   ▄████▀     ",
+];
+
+const BANNER_COMPACT = [
+	" _   _       _     _         _       ",
+	"| |_(_)_ __ | |__ | |_ _   _| |_ ___ ",
+	"| __| | '_ \\| '_ \\| __| | | | __/ _ \\",
+	"| |_| | | | | | | | |_| |_| | ||  __/",
+	" \\__|_|_| |_|_| |_|\\__|\\__,_|\\__|\\___|",
+];
+
+// OMP Brand Gradient: Magenta (#F84FCC) -> Violet (#9362F4) -> Cyan (#00DBE4)
+const GRADIENT_STOPS: [number, number, number][] = [
+	[248, 79, 204],
+	[147, 98, 244],
+	[0, 219, 228],
+];
+
+interface BannerDetails {
+	variant?: string;
+}
+
+function interpolateColor(ratio: number): string {
+	const scaled = Math.max(0, Math.min(1, ratio)) * (GRADIENT_STOPS.length - 1);
+	const idx = Math.min(GRADIENT_STOPS.length - 2, Math.floor(scaled));
+	const u = scaled - idx;
+	const c1 = GRADIENT_STOPS[idx];
+	const c2 = GRADIENT_STOPS[idx + 1];
+	const r = Math.round(c1[0] + (c2[0] - c1[0]) * u);
+	const g = Math.round(c1[1] + (c2[1] - c1[1]) * u);
+	const b = Math.round(c1[2] + (c2[2] - c1[2]) * u);
+	return `\x1b[38;2;${r};${g};${b}m`;
+}
+
+function center(text: string, width: number): string {
+	const visible = text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "").length;
+	if (width <= visible) return text;
+	const pad = Math.floor((width - visible) / 2);
+	return " ".repeat(pad) + text;
+}
+
+function colorizeBanner(lines: string[]): string[] {
+	const maxWidth = Math.max(...lines.map(l => l.length), 1);
+	const height = lines.length;
+
+	return lines.map((line, y) => {
+		let out = "";
+		for (let x = 0; x < line.length; x++) {
+			const ch = line[x];
+			if (ch === " ") {
+				out += ch;
+			} else {
+				const ratio = (x / (maxWidth - 1)) * 0.75 + (y / Math.max(1, height - 1)) * 0.25;
+				out += interpolateColor(ratio) + ch + "\x1b[0m";
+			}
+		}
+		return out;
+	});
+}
+
+function formatBannerLines(variant: "tinhtute" | "omp", width: number, expanded = false): string[] {
+	const lines: string[] = ["", ""];
+
+	if (variant === "omp") {
+		const colored = colorizeBanner(BANNER_OMP);
+		for (const line of colored) {
+			lines.push(center(line, width));
+		}
+	} else if (width >= 92) {
+		const colored = colorizeBanner(BANNER_TINHTUTE);
+		for (const line of colored) {
+			lines.push(center(line, width));
+		}
+	} else if (width >= 45) {
+		const colored = colorizeBanner(BANNER_COMPACT);
+		for (const line of colored) {
+			lines.push(center(line, width));
+		}
+	} else {
+		lines.push(center("\x1b[1;38;5;208m◆ TINHTUTE ◆\x1b[0m", width));
+	}
+
+	lines.push("");
+
+	const subtitle = `\x1b[1m\x1b[38;2;248;79;204momp\x1b[0m \x1b[90mv${VERSION}\x1b[0m \x1b[90m·\x1b[0m \x1b[38;2;0;219;228mminimal coding agent\x1b[0m`;
+	lines.push(center(subtitle, width));
+
+	if (expanded) {
+		lines.push("");
+		lines.push(center("\x1b[1mKeyboard Shortcuts\x1b[0m", width));
+		lines.push("");
+		const shortcuts: [string, string][] = [
+			["Ctrl+C", "Interrupt / Clear"],
+			["Ctrl+D", "Exit (empty draft)"],
+			["Ctrl+O", "Toggle expand tools & details"],
+			["Shift+Tab", "Cycle thinking level"],
+			["Ctrl+P / Shift+Ctrl+P", "Cycle models forward / backward"],
+			["Alt+M", "Select model dialog"],
+			["Ctrl+G", "Open external editor"],
+			["/", "Slash commands menu"],
+			["!", "Run bash command in terminal"],
+			["Ctrl+Q / Ctrl+Enter", "Queue follow-up message"],
+		];
+		for (const [key, desc] of shortcuts) {
+			const item = `  \x1b[38;2;147;98;244m${key.padEnd(24)}\x1b[0m \x1b[90m${desc}\x1b[0m`;
+			lines.push(width > 50 ? center(item, width) : item);
+		}
+	} else {
+		const hints = "\x1b[90mCtrl+C interrupt · / commands · ! bash · Ctrl+O more\x1b[0m";
+		lines.push(center(hints, width));
+	}
+
+	lines.push("");
+	return lines;
+}
+
+class CustomBannerComponent implements Component {
+	#variant: "tinhtute" | "omp";
+	#expanded: boolean;
+
+	constructor(variant: "tinhtute" | "omp" = "tinhtute", expanded = false) {
+		this.#variant = variant;
+		this.#expanded = expanded;
+	}
+
+	setExpanded(expanded: boolean): void {
+		this.#expanded = expanded;
+	}
+
+	render(width: number): string[] {
+		return formatBannerLines(this.#variant, width, this.#expanded);
+	}
+}
+
+/**
+ * Bundled banner: the fork's default startup visual, compiled into the binary so
+ * it does not depend on a user-level `extensions/` file. A discovered extension
+ * named `custom-banner` overrides it (see createAgentSession).
+ */
+export const createBannerExtension: ExtensionFactory = pi => {
+	// Custom message renderer: renders cleanly without default message framing/box
+	pi.registerMessageRenderer<BannerDetails>("custom-banner", (message, { expanded }) => {
+		const variant = message.details?.variant === "omp" ? "omp" : "tinhtute";
+		return new CustomBannerComponent(variant, expanded);
+	});
+
+	// Display banner on session start — TUI only; headless modes (print/RPC/ACP)
+	// and subagent sessions never see a UI for it.
+	pi.on("session_start", (_event, ctx) => {
+		if (ctx.mode !== "tui") return;
+		pi.sendMessage<BannerDetails>(
+			{
+				customType: "custom-banner",
+				content: "",
+				display: true,
+				attribution: "agent",
+				details: { variant: "tinhtute" },
+			},
+			{ triggerTurn: false },
+		);
+	});
+
+	// Slash command: /banner [tinhtute|omp]
+	pi.registerCommand("banner", {
+		description: "Display custom ANSI Shadow banner (/banner, /banner omp)",
+		getArgumentCompletions: prefix =>
+			["tinhtute", "omp"]
+				.filter(variant => variant.startsWith(prefix.trim().toLowerCase()))
+				.map(variant => ({ value: variant, label: variant })),
+		handler: async (args, ctx) => {
+			const mode = args.trim().toLowerCase();
+			const variant = mode.includes("omp") ? "omp" : "tinhtute";
+
+			pi.sendMessage<BannerDetails>(
+				{
+					customType: "custom-banner",
+					content: "",
+					display: true,
+					attribution: "agent",
+					details: { variant },
+				},
+				{ triggerTurn: false },
+			);
+
+			ctx.ui.notify(`Banner (${variant}) displayed`, "info");
+		},
+	});
+};

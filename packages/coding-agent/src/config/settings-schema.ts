@@ -2103,7 +2103,7 @@ export const SETTINGS_SCHEMA = {
 
 	"startup.quiet": {
 		type: "boolean",
-		default: false,
+		default: true,
 		ui: {
 			tab: "interaction",
 			group: "Startup & Updates",

@@ -45,6 +45,7 @@ import {
 import { AsyncJobManager } from "./async";
 import { AutoLearnController, buildAutoLearnInstructions } from "./autolearn/controller";
 import { createAutoresearchExtension } from "./autoresearch";
+import { createBannerExtension } from "./banner";
 import { loadCapability } from "./capability";
 import {
 	MAIN_AGENT_RULE_NAME,
@@ -79,6 +80,7 @@ import "./discovery";
 import { createImageUrlServiceFromSettings } from "./blob-broker/service";
 import { wrapStreamFnWithBlobUrlFallback } from "./blob-broker/stream-fallback";
 import { initializeWithSettings } from "./discovery";
+import { getExtensionNameFromPath } from "./discovery/helpers";
 import { setInvocationConfiguredExtensions, withOmpExtensionRootScope } from "./discovery/omp-extension-roots";
 import { disposeVmContextsByOwner } from "./eval/js/context-manager";
 import { getEnabledEvalPreludes, type EvalPreludeDefinition } from "./eval/preludes";
@@ -2252,6 +2254,16 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			if (match) {
 				nextInlineExtensionIndex = Math.max(nextInlineExtensionIndex, Number(match[1]) + 1);
 			}
+		}
+
+		// The bundled banner is this build's default startup visual. A discovered
+		// extension named `custom-banner` overrides it; subagent sessions and
+		// `--no-extensions` (`disableExtensionDiscovery`) skip it entirely.
+		if (!restrictToolNames && !isSubagentSession && !options.disableExtensionDiscovery) {
+			const hasBannerOverride = extensionsResult.extensions.some(
+				extension => getExtensionNameFromPath(extension.resolvedPath) === "custom-banner",
+			);
+			if (!hasBannerOverride) inlineExtensions.push(createBannerExtension);
 		}
 
 		// Load inline extensions from factories. Caller-provided factories are safe
