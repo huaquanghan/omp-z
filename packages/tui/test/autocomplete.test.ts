@@ -198,6 +198,65 @@ describe("CombinedAutocompleteProvider", () => {
 			expect(result?.items.map(item => item.value)).toEqual(["skill:research-last30days", "docs-last30days"]);
 		});
 
+		it("lists only skills for a bare `$` token", async () => {
+			const provider = new CombinedAutocompleteProvider(
+				[
+					{ name: "skill:security-scan", description: "Security scan" },
+					{ name: "skill:reviewer", description: "Code review" },
+					{ name: "model", description: "Switch model" },
+				],
+				"/tmp",
+			);
+
+			const result = await provider.getSuggestions(["$"], 0, 1);
+
+			expect(result?.prefix).toBe("$");
+			expect(result?.items.map(item => item.value)).toEqual(["skill:security-scan", "skill:reviewer"]);
+		});
+
+		it("filters skills by bare-name prefix after `$`", async () => {
+			const provider = new CombinedAutocompleteProvider(
+				[
+					{ name: "skill:security-scan", description: "Security scan" },
+					{ name: "skill:reviewer", description: "Code review" },
+				],
+				"/tmp",
+			);
+			const line = "$sec";
+
+			const result = await provider.getSuggestions([line], 0, line.length);
+
+			expect(result?.prefix).toBe("$sec");
+			expect(result?.items.map(item => item.value)).toEqual(["skill:security-scan"]);
+		});
+
+		it("suggests skills for a mid-prompt `$` token", async () => {
+			const provider = new CombinedAutocompleteProvider(
+				[{ name: "skill:security-scan", description: "Security scan" }],
+				"/tmp",
+			);
+			const line = "run $sec";
+
+			const result = await provider.getSuggestions([line], 0, line.length);
+
+			expect(result?.prefix).toBe("$sec");
+			expect(result?.items.map(item => item.value)).toEqual(["skill:security-scan"]);
+		});
+
+		it("does not open skill suggestions for python sigils or numeric prose", async () => {
+			const provider = new CombinedAutocompleteProvider(
+				[{ name: "skill:security-scan", description: "Security scan" }],
+				"/tmp",
+			);
+
+			for (const line of ["$$", "$5", "$ ", "x$sec"]) {
+				const result = await provider.getSuggestions([line], 0, line.length);
+				// Other completion families (e.g. paths after "$ ") may still
+				// answer; the assertion is that no skill item ever does.
+				expect((result?.items ?? []).filter(item => item.value.startsWith("skill:"))).toEqual([]);
+			}
+		});
+
 		it("keeps command precedence when a leading command ties a segmented skill prefix", async () => {
 			const provider = new CombinedAutocompleteProvider(
 				[
@@ -690,6 +749,35 @@ describe("CombinedAutocompleteProvider", () => {
 			expect(result.lines[0]).toBe("fix bug /skill:security-scan  then ship");
 			expect(result.cursorLine).toBe(0);
 			expect(result.cursorCol).toBe("fix bug /skill:security-scan ".length);
+		});
+
+		it("inserts the `$<name>` token at the cursor when applying a leading dollar skill completion", () => {
+			const provider = new CombinedAutocompleteProvider([], "/tmp");
+			const result = provider.applyCompletion(
+				["$sec"],
+				0,
+				4,
+				{ value: "skill:security-scan", label: "skill:security-scan" },
+				"$sec",
+			);
+
+			expect(result.lines[0]).toBe("$security-scan ");
+			expect(result.cursorCol).toBe("$security-scan ".length);
+		});
+
+		it("replaces only the `$token` span for a mid-prompt dollar skill completion", () => {
+			const provider = new CombinedAutocompleteProvider([], "/tmp");
+			const result = provider.applyCompletion(
+				["fix bug $sec then ship"],
+				0,
+				"fix bug $sec".length,
+				{ value: "skill:security-scan", label: "skill:security-scan" },
+				"$sec",
+			);
+
+			expect(result.lines[0]).toBe("fix bug $security-scan  then ship");
+			expect(result.cursorLine).toBe(0);
+			expect(result.cursorCol).toBe("fix bug $security-scan ".length);
 		});
 
 		it("preserves earlier slash command arguments when completing a path inside the last argument", () => {

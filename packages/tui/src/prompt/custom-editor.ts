@@ -7,7 +7,7 @@ import { addKeyAliases, canonicalKeyId, getKeybindings } from "../keybindings";
 import { type KeyId, parseKey, parseKittySequence } from "../keys";
 import { TUI } from "../tui";
 import type { AppKeybinding } from "../app-keybindings";
-import { allowsModelMentions, allowsSkillTokens, SKILL_TOKEN_RE } from "./skill-tokens";
+import { allowsModelMentions, allowsSkillTokens, iterSkillTokens } from "./skill-tokens";
 import { expandModelMentionTags, MODEL_MENTION_RE, modelMentionToken } from "./model-mention-syntax";
 import { isVideoPath, videoPreviewSource } from "./video";
 import {
@@ -580,25 +580,25 @@ export class CustomEditor extends Editor {
 	 */
 	fileHyperlink: (filePath: string, text: string) => string = (_filePath, text) => text;
 
-	/** Collapse every completed `/skill:<name>` token for a known skill into an atomic chip.
-	 *  A token is complete once whitespace follows it (autocomplete appends one; so does the
-	 *  user moving on), so a half-typed name never snaps early. */
+	/** Collapse every completed `/skill:<name>` or `$<name>` token for a known skill into an
+	 *  atomic chip. A token is complete once whitespace follows it (autocomplete appends one;
+	 *  so does the user moving on), so a half-typed name never snaps early. */
 	#collapseSkillTokens(): void {
 		// Scan lines (no buffer join) so plain typing stays O(1) allocations per keystroke.
 		const lines = this.getLines();
-		if (!lines.some(line => line.includes("/skill:")) || !allowsSkillTokens(this.getText())) return;
+		if (!lines.some(line => line.includes("/skill:") || line.includes("$")) || !allowsSkillTokens(this.getText()))
+			return;
 		for (let i = 0; i < lines.length; i++) {
 			let line = lines[i];
-			if (!line.includes("/skill:")) continue;
+			if (!line.includes("/skill:") && !line.includes("$")) continue;
 			for (;;) {
-				SKILL_TOKEN_RE.lastIndex = 0;
 				let collapsed = false;
-				for (let match = SKILL_TOKEN_RE.exec(line); match !== null; match = SKILL_TOKEN_RE.exec(line)) {
+				for (const match of iterSkillTokens(line)) {
 					const name = match[2];
 					const start = match.index + match[1].length;
 					const end = match.index + match[0].length;
 					if (end === line.length && i === lines.length - 1) break;
-					if (this.skillFilePath(name) === undefined) continue;
+					if (name === undefined || this.skillFilePath(name) === undefined) continue;
 					this.collapseToAtom(i, start, end, skillChipLabel(name), skillToken(name));
 					collapsed = true;
 					break;

@@ -883,6 +883,74 @@ describe("Editor Enter handler sync slash completion", () => {
 		expect(editor.getText()).toBe("");
 	});
 
+	it("opens the skill popup on a leading `$` and accepts with Tab", async () => {
+		const editor = createSkillEditor();
+
+		editor.handleInput("$");
+		await Promise.resolve();
+		expect(editor.isShowingAutocomplete()).toBe(true);
+
+		editor.handleInput("sec");
+		editor.handleInput("\t");
+
+		expect(editor.getText()).toBe("$security-scan ");
+	});
+
+	it("opens mid-prompt `$` skill autocomplete and inserts the token without wiping prose", async () => {
+		const editor = createSkillEditor();
+
+		editor.handleInput("run a ");
+		editor.handleInput("$");
+		await Promise.resolve();
+
+		expect(editor.getText()).toBe("run a $");
+		expect(editor.isShowingAutocomplete()).toBe(true);
+
+		editor.handleInput("\t");
+		expect(editor.getText()).toBe("run a $security-scan ");
+		expect(editor.isShowingAutocomplete()).toBe(false);
+	});
+
+	it("inserts a mid-prompt `$` skill token without submitting on Enter", async () => {
+		const editor = createSkillEditor();
+		let submitted: string | undefined;
+		editor.onSubmit = text => {
+			submitted = text;
+		};
+
+		editor.handleInput("fix bug ");
+		editor.handleInput("$");
+		await Promise.resolve();
+		expect(editor.isShowingAutocomplete()).toBe(true);
+
+		editor.handleInput("\r");
+
+		expect(submitted).toBeUndefined();
+		expect(editor.getText()).toBe("fix bug $security-scan ");
+	});
+
+	it("hides `$` skill autocomplete when Backspace removes the dollar", async () => {
+		const editor = createSkillEditor();
+
+		editor.handleInput("run a $");
+		await Promise.resolve();
+		expect(editor.isShowingAutocomplete()).toBe(true);
+
+		editor.handleInput("\x7f");
+
+		expect(editor.getText()).toBe("run a ");
+		expect(editor.isShowingAutocomplete()).toBe(false);
+	});
+
+	it("does not open the skill popup for `$$`", async () => {
+		const editor = createSkillEditor();
+
+		editor.handleInput("$$");
+		await Promise.resolve();
+
+		expect(editor.isShowingAutocomplete()).toBe(false);
+	});
+
 	it("submits the raw draft when Enter sees a relocated non-skill popup", async () => {
 		const { editor, submissions } = await createRelocatedModelPopup();
 

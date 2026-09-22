@@ -146,6 +146,7 @@ If `skills.enableSkillCommands` is true, interactive mode registers one slash co
 `/skill:<name> [args]` behavior:
 
 - recognizes the traditional leading form and a whitespace-delimited `/skill:<name>` token embedded in ordinary prose
+- accepts the Codex-style `$<name>` alias everywhere `/skill:<name>` is recognized (leading or mid-prompt); the name must start with a letter or underscore, so `$5`, `$HOME`-style variables, `${...}`, and the Python sigils (`$ `, `$$ `) never parse as invocations
 - for an embedded token, removes the token and passes the surrounding prose as arguments
 - does not treat embedded tokens as invocations when the draft starts with another slash command or a local bash/Python execution sigil
 - reads the skill file directly from `filePath`
@@ -213,7 +214,7 @@ No fallback search is performed for missing assets.
 
 - **Skills**: model-readable knowledge/workflow content
 - **Slash commands**: user-invoked command entry points
-- `/skill:<name>` is a convenience wrapper that injects skill text; it does not change skill discovery semantics
+- `/skill:<name>` (or its `$<name>` alias) is a convenience wrapper that injects skill text; it does not change skill discovery semantics
 
 ### Skills vs custom tools
 

@@ -6,6 +6,39 @@
 export const SKILL_TOKEN_RE = /(^|\s)\/skill:([^\s/]+)(?=\s|$)/g;
 
 /**
+ * One `$<name>` skill token (Codex-style alias for `/skill:<name>`), delimited
+ * by whitespace or line edges. The name must start with a letter or underscore
+ * so prose like `$5`, `$100`, or `${VAR}` never parses as a candidate, and the
+ * glued form keeps the Python-exec sigils (`$ `, `$$ `, `$\t`) untouched —
+ * those require whitespace after `$`, which this token never has. Group 1 is
+ * the leading delimiter (empty at line start), group 2 the bare skill name.
+ * Global so callers can walk every token; reset `lastIndex` before reuse.
+ */
+export const SKILL_DOLLAR_TOKEN_RE = /(^|\s)\$([A-Za-z_][\w-]*(?:\.[\w-]+)*)(?=\s|$)/g;
+
+/**
+ * Yield every skill token (`/skill:<name>` or `$<name>`) in `text`, earliest
+ * first. Both regexes share the same group shape — group 1 is the leading
+ * delimiter (empty at line start), group 2 the bare skill name — so consumers
+ * can treat matches uniformly. Resets both `lastIndex` cursors up front.
+ */
+export function* iterSkillTokens(text: string): Generator<RegExpExecArray> {
+	SKILL_TOKEN_RE.lastIndex = 0;
+	SKILL_DOLLAR_TOKEN_RE.lastIndex = 0;
+	let slash = SKILL_TOKEN_RE.exec(text);
+	let dollar = SKILL_DOLLAR_TOKEN_RE.exec(text);
+	while (slash || dollar) {
+		if (slash && (!dollar || slash.index <= dollar.index)) {
+			yield slash;
+			slash = SKILL_TOKEN_RE.exec(text);
+		} else if (dollar) {
+			yield dollar;
+			dollar = SKILL_DOLLAR_TOKEN_RE.exec(text);
+		}
+	}
+}
+
+/**
  * Whether the (already left-trimmed) draft begins with a TUI local-execution
  * sigil that downstream branches consume verbatim.
  */

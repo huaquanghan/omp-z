@@ -4,6 +4,7 @@ import {
 	type AutocompleteItem,
 	type AutocompleteProvider,
 	findLeadingSlashCommandStart,
+	findTrailingDollarSkillStart,
 	findTrailingSlashCommandStart,
 	isDirectoryCompletionValue,
 	midPromptSkillTokenMatches,
@@ -2794,6 +2795,17 @@ export class Editor implements Component, Focusable {
 					this.#tryTriggerAutocomplete();
 				}
 			}
+			// Auto-trigger for "$" skill tokens (`$<name>` alias for /skill:<name>)
+			else if (char === "$") {
+				const currentLine = this.#state.lines[this.#state.cursorLine] || "";
+				const textBeforeCursor = currentLine.slice(0, this.#state.cursorCol);
+				// Only trigger if $ is after whitespace or at start of line —
+				// `$$`/glued `$x$` prose never opens the skill popup.
+				const charBeforeDollar = textBeforeCursor[textBeforeCursor.length - 2];
+				if (textBeforeCursor.length === 1 || charBeforeDollar === " " || charBeforeDollar === "\t") {
+					this.#tryTriggerAutocomplete();
+				}
+			}
 			// Auto-trigger for "#" prompt actions anywhere in the current token
 			else if (char === "#") {
 				this.#tryTriggerAutocomplete();
@@ -2816,6 +2828,10 @@ export class Editor implements Component, Focusable {
 				}
 				// Check if we're in a model mention context
 				else if (MENTION_CONTEXT_RE.test(textBeforeCursor)) {
+					this.#tryTriggerAutocomplete();
+				}
+				// Check if we're in a $<name> skill token context
+				else if (findTrailingDollarSkillStart(textBeforeCursor) !== null) {
 					this.#tryTriggerAutocomplete();
 				}
 				// Check if we're in a # prompt action context
@@ -3058,7 +3074,9 @@ export class Editor implements Component, Focusable {
 			const line = this.#state.lines[this.#state.cursorLine] || "";
 			const textBeforeCursor = line.slice(0, this.#state.cursorCol);
 			const trailingSlashStart = findTrailingSlashCommandStart(textBeforeCursor);
-			removedSlashTrigger = trailingSlashStart === this.#state.cursorCol - 1;
+			const trailingDollarStart = findTrailingDollarSkillStart(textBeforeCursor);
+			removedSlashTrigger =
+				trailingSlashStart === this.#state.cursorCol - 1 || trailingDollarStart === this.#state.cursorCol - 1;
 			// An atomic placeholder token (image/paste marker) deletes as a unit, so a single
 			// backspace never leaves a half-eaten `[Paste #1, +30 lines` behind as stray text.
 			const token = this.#atomicTokenAt(line, this.#state.cursorCol - 1);
@@ -3116,6 +3134,10 @@ export class Editor implements Component, Focusable {
 			}
 			// model mention context
 			else if (MENTION_CONTEXT_RE.test(textBeforeCursor)) {
+				this.#tryTriggerAutocomplete();
+			}
+			// $<name> skill token context
+			else if (findTrailingDollarSkillStart(textBeforeCursor) !== null) {
 				this.#tryTriggerAutocomplete();
 			}
 			// # prompt action context
@@ -3289,6 +3311,8 @@ export class Editor implements Component, Focusable {
 			} else if (textBeforeCursor.match(/(?:^|[\s])@[^\s]*$/)) {
 				this.#tryTriggerAutocomplete();
 			} else if (MENTION_CONTEXT_RE.test(textBeforeCursor)) {
+				this.#tryTriggerAutocomplete();
+			} else if (findTrailingDollarSkillStart(textBeforeCursor) !== null) {
 				this.#tryTriggerAutocomplete();
 			} else if (textBeforeCursor.match(/#[^\s#]*$/)) {
 				this.#tryTriggerAutocomplete();
@@ -3630,6 +3654,10 @@ export class Editor implements Component, Focusable {
 			else if (MENTION_CONTEXT_RE.test(textBeforeCursor)) {
 				this.#tryTriggerAutocomplete();
 			}
+			// $<name> skill token context
+			else if (findTrailingDollarSkillStart(textBeforeCursor) !== null) {
+				this.#tryTriggerAutocomplete();
+			}
 			// # prompt action context
 			else if (textBeforeCursor.match(/#[^\s#]*$/)) {
 				this.#tryTriggerAutocomplete();
@@ -3925,6 +3953,10 @@ export class Editor implements Component, Focusable {
 
 		if (this.#autocompletePrefix.startsWith("^")) {
 			return MENTION_CONTEXT_RE.test(currentTextBeforeCursor);
+		}
+
+		if (this.#autocompletePrefix.startsWith("$")) {
+			return findTrailingDollarSkillStart(currentTextBeforeCursor) !== null;
 		}
 
 		return currentTextBeforeCursor.endsWith(this.#autocompletePrefix);

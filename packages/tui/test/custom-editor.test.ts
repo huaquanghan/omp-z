@@ -288,6 +288,38 @@ describe("CustomEditor bracketed path paste", () => {
 			expect(editor.getText()).toBe(`fix it ${skillChipLabel("reviewer")} please`);
 			expect(editor.getExpandedText()).toBe("fix it /skill:reviewer please");
 		});
+
+		it("snaps a typed `$<name>` into a chip once whitespace terminates it", () => {
+			const editor = makeSkillEditor();
+			for (const ch of "use $reviewer") editor.handleInput(ch);
+			// Still typing: no snap while the name could grow.
+			expect(editor.getText()).toBe("use $reviewer");
+			editor.handleInput(" ");
+			const chip = skillChipLabel("reviewer");
+			expect(editor.getText()).toBe(`use ${chip} `);
+		});
+
+		it("expands a `$<name>` chip back to the canonical `/skill:` token on submit", () => {
+			const editor = makeSkillEditor();
+			for (const ch of "$reviewer then") editor.handleInput(ch);
+			const chip = skillChipLabel("reviewer");
+			expect(editor.getText()).toBe(`${chip} then`);
+
+			let submitted: string | undefined;
+			editor.onSubmit = text => {
+				submitted = text;
+			};
+			editor.handleInput("\r");
+			expect(submitted).toBe("/skill:reviewer then");
+		});
+
+		it("leaves unknown and non-skill `$` tokens literal", () => {
+			const editor = makeSkillEditor();
+			for (const ch of "use $nope ") editor.handleInput(ch);
+			expect(editor.getText()).toBe("use $nope ");
+			for (const ch of "and $HOME plus $5 ") editor.handleInput(ch);
+			expect(editor.getText()).toBe(`use $nope and $HOME plus $5 `);
+		});
 	});
 
 	describe("model mention chips", () => {

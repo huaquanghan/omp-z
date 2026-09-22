@@ -78,6 +78,19 @@ export function findTrailingSlashCommandStart(text: string): number | null {
 	return match.index + slashOffset;
 }
 
+/**
+ * Locate the `$` opening a `$<name>` skill token that ends at the cursor,
+ * whitespace/start-anchored like `@` mentions. An empty name (`$` alone)
+ * still counts so the popup can list every skill. Returns null for the
+ * Python-exec sigils (`$ `, `$$`, `${`) and numeric prose (`$5`) — the name,
+ * when present, must start with a letter or underscore.
+ */
+export function findTrailingDollarSkillStart(text: string): number | null {
+	const match = /(?:^|\s)\$([A-Za-z_][\w-]*)?$/.exec(text);
+	if (!match || match.index === undefined) return null;
+	return match.index + match[0].indexOf("$");
+}
+
 function extractQuotedPrefix(text: string): string | null {
 	const quoteStart = findUnclosedQuoteStart(text);
 	if (quoteStart === null) {
@@ -638,6 +651,20 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 			}
 		}
 
+		// Check for a `$<name>` skill token (Codex-style alias for `/skill:<name>`).
+		// Anchored to a token start like `@` mentions; the popup lists skills only.
+		const dollarStart = findTrailingDollarSkillStart(textBeforeCursor);
+		if (dollarStart !== null) {
+			const dollarToken = textBeforeCursor.slice(dollarStart);
+			const items = buildMidPromptSkillCompletions(this.#commands, dollarToken.slice(1).toLowerCase());
+			if (items.length > 0) {
+				// Acceptance replaces only the `$token` span, so the prefix is just
+				// the token — matching the mid-prompt slash branch's contract.
+				return { items, prefix: dollarToken };
+			}
+			// No skill matches: fall through so `@`/path contexts still apply.
+		}
+
 		// Check for @ file reference (fuzzy search) - must be after a delimiter or at start
 		const atPrefix = this.#extractAtPrefix(textBeforeCursor);
 		if (atPrefix) {
@@ -734,6 +761,23 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 				lines: newLines,
 				cursorLine,
 				cursorCol: beforeSlash.length + insert.length,
+			};
+		}
+
+		// `$<name>` skill acceptance: replace only the `$token` span with
+		// `$<name> `, preserving the surrounding draft exactly like the
+		// mid-prompt slash branch above.
+		const trailingDollarStart = findTrailingDollarSkillStart(textBeforeCursor);
+		if (item.value.startsWith(SKILL_NAMESPACE) && trailingDollarStart !== null) {
+			const beforeDollar = currentLine.slice(0, trailingDollarStart);
+			const insert = `$${item.value.slice(SKILL_NAMESPACE.length)} `;
+			const newLine = `${beforeDollar}${insert}${afterCursor}`;
+			const newLines = [...lines];
+			newLines[cursorLine] = newLine;
+			return {
+				lines: newLines,
+				cursorLine,
+				cursorCol: beforeDollar.length + insert.length,
 			};
 		}
 

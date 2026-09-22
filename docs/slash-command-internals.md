@@ -154,7 +154,7 @@ At construction time it builds a pending command list from:
 - built-ins (`BUILTIN_SLASH_COMMANDS`, includes argument completion and inline hints for selected commands)
 - extension-registered slash commands (`extensionRunner.getRegisteredCommands(...)`)
 - TypeScript custom commands (`session.customCommands`), mapped to slash command labels
-- optional skill commands (`/skill:<name>`) when `skills.enableSkillCommands` is enabled
+- optional skill commands (`/skill:<name>`, also invocable via the `$<name>` alias) when `skills.enableSkillCommands` is enabled
 
 Then `init()` calls `refreshSlashCommandState(...)` to load file-based commands and install one autocomplete provider (`createPromptActionAutocompleteProvider`, a `PromptActionAutocompleteProvider` wrapping a `CombinedAutocompleteProvider`) containing:
 

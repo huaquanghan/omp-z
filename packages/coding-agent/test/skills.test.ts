@@ -677,12 +677,13 @@ describe("parseSkillInvocation", () => {
 		});
 
 		it("still matches when `$` is followed by prose, not a python whitespace sigil", () => {
-			// `$echo`, `${HOME}`, and `$200` are not python commands — `pythonCommandPrefixLength`
-			// returns 0 for them — so the mid-prompt parser must still see the embedded skill.
-			expect(parseSkillInvocation("$echo /skill:reviewer")).toEqual({
+			// `$200` and `${HOME}` are neither python commands nor `$<name>` skill
+			// tokens (the dollar form requires an alpha/underscore start), so the
+			// mid-prompt parser must still see the embedded `/skill:` token.
+			expect(parseSkillInvocation("$200 /skill:reviewer")).toEqual({
 				name: "reviewer",
-				args: "$echo",
-				prompt: "$echo /skill:reviewer",
+				args: "$200",
+				prompt: "$200 /skill:reviewer",
 			});
 			// oxlint-disable-next-line no-template-curly-in-string -- testing literal string containing shell variable
 			expect(parseSkillInvocation("${HOME}/bin /skill:foo")).toEqual({
@@ -706,6 +707,93 @@ describe("parseSkillInvocation", () => {
 			// `/skill:foo/bar` mid-prompt is ambiguous with a path — the mid-prompt
 			// regex requires `[^\s/]+`, so this falls through with no match.
 			expect(parseSkillInvocation("see /skill:foo/bar")).toBeUndefined();
+		});
+	});
+
+	describe("`$<name>` alias form", () => {
+		it("parses a bare leading `$<name>` invocation", () => {
+			expect(parseSkillInvocation("$foo")).toEqual({ name: "foo", args: "", prompt: "$foo" });
+		});
+
+		it("captures everything after the `$<name>` token as args", () => {
+			expect(parseSkillInvocation("$foo focus on auth")).toEqual({
+				name: "foo",
+				args: "focus on auth",
+				prompt: "$foo focus on auth",
+			});
+		});
+
+		it("allows leading whitespace before the `$<name>` token", () => {
+			expect(parseSkillInvocation("  $foo focus on auth")).toEqual({
+				name: "foo",
+				args: "focus on auth",
+				prompt: "$foo focus on auth",
+			});
+		});
+
+		it("terminates the name at a newline so a multi-line draft still invokes the skill", () => {
+			expect(parseSkillInvocation("$foo\nfocus on auth")).toEqual({
+				name: "foo",
+				args: "focus on auth",
+				prompt: "$foo\nfocus on auth",
+			});
+		});
+
+		it("threads surrounding prose through as args for a mid-prompt `$<name>` token", () => {
+			expect(parseSkillInvocation("fix the auth bug $security-scan ")).toEqual({
+				name: "security-scan",
+				args: "fix the auth bug",
+				prompt: "fix the auth bug $security-scan",
+			});
+			expect(parseSkillInvocation("leading $foo trailing")).toEqual({
+				name: "foo",
+				args: "leading trailing",
+				prompt: "leading $foo trailing",
+			});
+		});
+
+		it("picks the earliest skill token when both sigils appear in one draft", () => {
+			expect(parseSkillInvocation("x $alpha /skill:beta")).toEqual({
+				name: "alpha",
+				args: "x /skill:beta",
+				prompt: "x $alpha /skill:beta",
+			});
+			expect(parseSkillInvocation("x /skill:alpha $beta")).toEqual({
+				name: "alpha",
+				args: "x $beta",
+				prompt: "x /skill:alpha $beta",
+			});
+		});
+
+		it("lets a leading `$<name>` token win over a later `/skill:` token", () => {
+			expect(parseSkillInvocation("$alpha /skill:beta")).toEqual({
+				name: "alpha",
+				args: "/skill:beta",
+				prompt: "$alpha /skill:beta",
+			});
+		});
+
+		it("never parses python sigils or shell variables as skill tokens", () => {
+			expect(parseSkillInvocation("$ run.py")).toBeUndefined();
+			expect(parseSkillInvocation("$$ run.py")).toBeUndefined();
+			expect(parseSkillInvocation("$\trun.py")).toBeUndefined();
+			expect(parseSkillInvocation("$")).toBeUndefined();
+			expect(parseSkillInvocation("$$foo")).toBeUndefined();
+			// oxlint-disable-next-line no-template-curly-in-string -- testing literal string containing shell variable
+			expect(parseSkillInvocation("${HOME}")).toBeUndefined();
+			expect(parseSkillInvocation("$5")).toBeUndefined();
+			expect(parseSkillInvocation("$5.99 off")).toBeUndefined();
+		});
+
+		it("requires whitespace after the `$<name>` token", () => {
+			expect(parseSkillInvocation("$foo$bar")).toBeUndefined();
+			expect(parseSkillInvocation("costs $5and more")).toBeUndefined();
+		});
+
+		it("does not hijack bash/python/slash drafts whose bodies mention `$<name>`", () => {
+			expect(parseSkillInvocation("!echo $foo")).toBeUndefined();
+			expect(parseSkillInvocation("$ run.py $foo")).toBeUndefined();
+			expect(parseSkillInvocation("/compact $foo")).toBeUndefined();
 		});
 	});
 });

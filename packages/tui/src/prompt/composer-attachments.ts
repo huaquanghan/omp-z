@@ -1,4 +1,4 @@
-import { allowsModelMentions, allowsSkillTokens, SKILL_TOKEN_RE } from "./skill-tokens";
+import { allowsModelMentions, allowsSkillTokens, iterSkillTokens } from "./skill-tokens";
 import { MODEL_MENTION_RE, modelMentionToken } from "./model-mention-syntax";
 import { SYMBOL_PRESETS } from "../theme/symbols";
 import { type ThemeColor, theme } from "../theme/theme";
@@ -55,9 +55,10 @@ const SKILL_CHIP_SOURCE = `(?:${SKILL_ICONS.map(icon =>
 ).join("|")}) (${SKILL_NAME_SOURCE})(?![\\w-])`;
 
 /**
- * Replaces `/skill:<name>` tokens for known skills with compact chip labels and
- * registers each label's token as its atomic editor expansion. Leaves the text
- * untouched when skill tokens are not invocations in this draft (see
+ * Replaces `/skill:<name>` and `$<name>` tokens for known skills with compact
+ * chip labels and registers each label's token as its atomic editor expansion
+ * (always the canonical `/skill:<name>` form). Leaves the text untouched when
+ * skill tokens are not invocations in this draft (see
  * {@link allowsSkillTokens}).
  */
 export function collapseSkillTokens(
@@ -65,14 +66,18 @@ export function collapseSkillTokens(
 	isKnown: (name: string) => boolean,
 	register: (label: string, expansion: string) => void,
 ): string {
-	if (!text.includes("/skill:") || !allowsSkillTokens(text)) return text;
-	SKILL_TOKEN_RE.lastIndex = 0;
-	return text.replace(SKILL_TOKEN_RE, (match, delimiter: string, name: string) => {
-		if (!isKnown(name)) return match;
-		const label = skillChipLabel(name);
-		register(label, skillToken(name));
-		return `${delimiter}${label}`;
-	});
+	if ((!text.includes("/skill:") && !text.includes("$")) || !allowsSkillTokens(text)) return text;
+	let out = "";
+	let cursor = 0;
+	for (const match of iterSkillTokens(text)) {
+		const name = match[2];
+		if (name === undefined || !isKnown(name)) continue;
+		const tokenStart = match.index + match[1].length;
+		register(skillChipLabel(name), skillToken(name));
+		out += text.slice(cursor, tokenStart) + skillChipLabel(name);
+		cursor = match.index + match[0].length;
+	}
+	return cursor === 0 ? text : out + text.slice(cursor);
 }
 
 /**

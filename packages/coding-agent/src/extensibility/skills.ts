@@ -11,13 +11,13 @@ import type { EffectiveExtensionRoots, SourceMeta } from "../capability/types";
 import type { SkillsSettings } from "../config/settings";
 import { type Skill as CapabilitySkill, isUserSourceEnabled, loadCapability } from "../discovery";
 import { compareSkillOrder, scanSkillsFromDir } from "../discovery/helpers";
-import { allowsSkillTokens, SKILL_TOKEN_RE } from "@oh-my-pi/pi-tui/prompt/skill-tokens";
+import { allowsSkillTokens, SKILL_DOLLAR_TOKEN_RE, SKILL_TOKEN_RE } from "@oh-my-pi/pi-tui/prompt/skill-tokens";
 import autoloadTemplate from "../prompts/skills/autoload.md" with { type: "text" };
 import userInvocationTemplate from "../prompts/skills/user-invocation.md" with { type: "text" };
 import type { SkillPromptDetails } from "../session/messages";
 import { expandTilde } from "../tools/path-utils";
 
-export { allowsSkillTokens, SKILL_TOKEN_RE };
+export { allowsSkillTokens, SKILL_DOLLAR_TOKEN_RE, SKILL_TOKEN_RE };
 
 export interface Skill {
 	name: string;
@@ -422,30 +422,33 @@ export function getSkillSlashCommandName(skill: Pick<Skill, "name">): string {
 }
 
 /**
- * Parsed `/skill:<name>` invocation: either at the start of the draft (the
- * traditional slash-command position) or as a `/skill:<name>` token embedded
- * mid-prompt. For the mid-prompt form the surrounding prose is threaded
- * through as `args` so the skill sees the full user request.
+ * Parsed skill invocation: `/skill:<name>` or its `$<name>` alias, either at
+ * the start of the draft (the traditional command position) or as a token
+ * embedded mid-prompt. For the mid-prompt form the surrounding prose is
+ * threaded through as `args` so the skill sees the full user request.
  */
 export interface ParsedSkillInvocation {
-	/** Bare skill name without the leading `skill:` prefix. */
+	/** Bare skill name without the leading `skill:`/`$` prefix. */
 	name: string;
-	/** User-supplied arguments (everything outside the `/skill:<name>` token). */
+	/** User-supplied arguments (everything outside the skill token). */
 	args: string;
 	/** The draft as submitted (trimmed), token in place — drives the transcript layout. */
 	prompt: string;
 }
 
 /**
- * Detect a `/skill:<name>` invocation in a user draft.
+ * Detect a skill invocation in a user draft.
  *
  * Returns `undefined` when the text contains no skill token. Otherwise:
- *   - Leading form (`/skill:foo bar baz`): name=`foo`, args=`bar baz`.
- *   - Mid-prompt form (`fix the bug /skill:foo focus on auth`): name=`foo`,
- *     args=`fix the bug focus on auth` — the surrounding prose collapsed
- *     into a single args string.
+ *   - Leading form (`/skill:foo bar baz` or `$foo bar baz`): name=`foo`,
+ *     args=`bar baz`.
+ *   - Mid-prompt form (`fix the bug /skill:foo focus on auth` or
+ *     `fix the bug $foo focus on auth`): name=`foo`, args=`fix the bug focus
+ *     on auth` — the surrounding prose collapsed into a single args string.
  *
- * Mid-prompt detection is gated by {@link allowsSkillTokens}.
+ * `$` tokens require an alpha/underscore start and never match the Python-exec
+ * sigils (`$ `, `$$ `, `${`) or prices (`$5`). Mid-prompt detection is gated
+ * by {@link allowsSkillTokens}.
  */
 export function parseSkillInvocation(text: string): ParsedSkillInvocation | undefined {
 	const trimmedStart = text.trimStart();
@@ -458,9 +461,24 @@ export function parseSkillInvocation(text: string): ParsedSkillInvocation | unde
 		const args = spaceIndex === -1 ? "" : trimmedStart.slice(spaceIndex + 1).trim();
 		return { name, args, prompt };
 	}
+	// Leading `$<name>` alias (Codex-style). Anchored here, before the
+	// allowsSkillTokens gate, because a `$name` draft is not a local-execution
+	// sigil (`$ `, `$$ `, `${`) — the name character is glued to `$`.
+	const leadingDollar = /^\$([A-Za-z_][\w-]*(?:\.[\w-]+)*)(?=\s|$)/.exec(trimmedStart);
+	if (leadingDollar) {
+		return { name: leadingDollar[1]!, args: trimmedStart.slice(leadingDollar[0].length).trim(), prompt };
+	}
 	if (!allowsSkillTokens(trimmedStart)) return undefined;
 	SKILL_TOKEN_RE.lastIndex = 0;
-	const match = SKILL_TOKEN_RE.exec(text);
+	SKILL_DOLLAR_TOKEN_RE.lastIndex = 0;
+	const slashToken = SKILL_TOKEN_RE.exec(text);
+	const dollarToken = SKILL_DOLLAR_TOKEN_RE.exec(text);
+	const match =
+		slashToken && dollarToken
+			? slashToken.index <= dollarToken.index
+				? slashToken
+				: dollarToken
+			: (slashToken ?? dollarToken);
 	if (!match) return undefined;
 	const tokenStart = match.index + match[1].length;
 	const tokenEnd = match.index + match[0].length;
