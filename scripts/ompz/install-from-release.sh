@@ -17,8 +17,9 @@ VERSION="${OMPZ_VERSION:-latest}"
 # --- pretty output ---------------------------------------------------------
 if [[ -t 2 && -z "${NO_COLOR:-}" ]]; then
 	BOLD=$'\033[1m'; DIM=$'\033[2m'; GREEN=$'\033[32m'; CYAN=$'\033[36m'; YELLOW=$'\033[33m'; RED=$'\033[31m'; RESET=$'\033[0m'
+	TTY=1
 else
-	BOLD=""; DIM=""; GREEN=""; CYAN=""; YELLOW=""; RED=""; RESET=""
+	BOLD=""; DIM=""; GREEN=""; CYAN=""; YELLOW=""; RED=""; RESET=""; TTY=0
 fi
 
 step() { printf '%s==>%s %s\n' "$CYAN" "$RESET" "$*" >&2; }
@@ -31,6 +32,48 @@ human_bytes() { # bytes -> "197 MiB"
 	if   (( b >= 1048576 )); then awk -v b="$b" 'BEGIN{printf "%.0f MiB", b/1048576}'
 	elif (( b >= 1024 ));    then awk -v b="$b" 'BEGIN{printf "%.0f KiB", b/1024}'
 	else printf '%s B' "$b"; fi
+}
+
+stat_size() { stat -c %s "$1" 2>/dev/null || stat -f %z "$1" 2>/dev/null || echo 0; }
+
+# " · ━━━━━━━━━───── 47% · 92/197 MiB · ϟ"
+bar_frame() { # <cur-bytes> <total-bytes>
+	local cur="$1" total="$2" pct filled i filled_bar="" empty_bar=""
+	pct=$(( total > 0 ? cur * 100 / total : 0 ))
+	if (( pct > 100 )); then pct=100; fi
+	filled=$(( pct * 36 / 100 ))
+	for (( i = 0; i < filled; i++ ));   do filled_bar+="━"; done
+	for (( i = filled; i < 36; i++ )); do empty_bar+="─"; done
+	printf '\r %s·%s %s%s%s%s %s%3d%%%s %s·%s %s/%s MiB %s·%s %sϟ%s\033[K' \
+		"$DIM" "$RESET" \
+		"$GREEN" "$filled_bar" "$DIM" "$empty_bar" \
+		"$BOLD" "$pct" "$RESET" \
+		"$DIM" "$RESET" "$(( cur / 1048576 ))" "$(( total / 1048576 ))" \
+		"$DIM" "$RESET" "$CYAN" "$RESET" >&2
+}
+
+# Redraw bar_frame in place while <pid> runs; leaves the final frame on screen.
+dl_bar() { # <pid> <file> <total>
+	local pid="$1" file="$2" total="$3"
+	while kill -0 "$pid" 2>/dev/null; do
+		bar_frame "$(stat_size "$file")" "$total"
+		sleep 0.12
+	done
+	bar_frame "$(stat_size "$file")" "$total"
+	printf '\n' >&2
+}
+
+# " · ⠋ verifying checksum" — spins while <pid> runs, returns its exit code
+spinner() { # <pid> <label>
+	local pid="$1" label="$2" i=0
+	local chars='⠋⠙⠹⠸⠼⠴⦦⠧⠇⠏'
+	while kill -0 "$pid" 2>/dev/null; do
+		printf '\r %s·%s %s%s%s %s\033[K' \
+			"$DIM" "$RESET" "$CYAN" "${chars:i++%10:1}" "$RESET" "$label" >&2
+		sleep 0.08
+	done
+	printf '\r\033[K' >&2
+	wait "$pid"
 }
 
 case "$(uname -s)-$(uname -m)" in
@@ -53,6 +96,7 @@ fi
 # actually fetching. Best-effort — failed lookups just mean quieter output.
 TAG_LABEL="$VERSION"
 SIZE_LABEL=""
+SIZE_BYTES=0
 if [[ "$VERSION" == "latest" ]]; then
 	# `releases/latest` is an HTML redirect to `releases/tag/<tag>` — HEAD it
 	# without following to read the resolved tag off the location header.
@@ -63,7 +107,10 @@ if [[ "$VERSION" == "latest" ]]; then
 fi
 if asset_headers="$(curl -fsSIL --max-time 10 "$BASE_URL/$ASSET" 2>/dev/null)"; then
 	size="$(printf '%s' "$asset_headers" | tr -d '\r' | awk 'tolower($1)=="content-length:"{print $2}' | tail -1)"
-	if [[ "$size" =~ ^[0-9]+$ ]]; then SIZE_LABEL=" · $(human_bytes "$size")"; fi
+	if [[ "$size" =~ ^[0-9]+$ ]]; then
+		SIZE_BYTES="$size"
+		SIZE_LABEL=" · $(human_bytes "$size")"
+	fi
 fi
 
 TMP="$(mktemp -d)"
@@ -73,13 +120,24 @@ printf '%sompz installer%s\n' "$BOLD" "$RESET" >&2
 
 download() {
 	step "downloading $ASSET ${DIM}($TAG_LABEL$SIZE_LABEL)${RESET}"
-	curl -fsSL --progress-bar --retry 3 -o "$TMP/$ASSET" "$BASE_URL/$ASSET"
+	if (( TTY && SIZE_BYTES > 0 )); then
+		curl -fsSL --retry 3 -o "$TMP/$ASSET" "$BASE_URL/$ASSET" &
+		dl_bar $! "$TMP/$ASSET" "$SIZE_BYTES"
+		if ! wait $!; then die "download failed — check your connection"; fi
+	else
+		curl -fsSL --progress-bar --retry 3 -o "$TMP/$ASSET" "$BASE_URL/$ASSET"
+	fi
 	curl -fsSL -o "$TMP/SHA256SUMS.txt" "$BASE_URL/SHA256SUMS.txt" 2>/dev/null || true
 }
 
 verify() {
 	if [[ -s "$TMP/SHA256SUMS.txt" ]] && grep -q " $ASSET\$" "$TMP/SHA256SUMS.txt"; then
-		(cd "$TMP" && grep " $ASSET\$" SHA256SUMS.txt | sha256sum -c - >/dev/null 2>&1)
+		if (( TTY )); then
+			(cd "$TMP" && grep " $ASSET\$" SHA256SUMS.txt | sha256sum -c - >/dev/null 2>&1) &
+			spinner $! "verifying checksum"
+		else
+			(cd "$TMP" && grep " $ASSET\$" SHA256SUMS.txt | sha256sum -c - >/dev/null 2>&1)
+		fi
 	else
 		return 2 # no checksum to verify against
 	fi
