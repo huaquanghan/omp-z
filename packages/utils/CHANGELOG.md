@@ -5,6 +5,9 @@
 ### Fixed
 
 - Fixed a broken pipe to any vanished peer (closed subprocess stdin, socket, or terminal) raising a fatal `EPIPE: broken pipe, write` that killed the whole agent session mid-task; pipe-write EPIPEs are now contained with sampled logging while every non-EPIPE failure stays fatal ([#12779](https://github.com/can1357/oh-my-pi/pull/12779) by [@HJXArthurAtlas](https://github.com/HJXArthurAtlas)).
+### Changed
+
+- Migrated internal cryptographic utilities to `Bun` performance-optimized hashers
 
 ## [18.2.7] - 2026-09-21
 

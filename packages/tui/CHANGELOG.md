@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Updated model hub and oauth selector components to use namespaced `authStorage` API
+
+## [18.2.11] - 2026-09-23
+
 ### Added
 
 - Added a Skills section to the settings.
