@@ -38,7 +38,7 @@ https://github.com/huaquanghan/omp-z/releases/latest/download/<asset>
 ### Pin a version
 
 ```bash
-OMPZ_VERSION=ompz-v18.2.10-1 curl -fsSL https://raw.githubusercontent.com/huaquanghan/omp-z/main/scripts/ompz/install-from-release.sh | bash
+OMPZ_VERSION=ompz-v18.2.11 curl -fsSL https://raw.githubusercontent.com/huaquanghan/omp-z/main/scripts/ompz/install-from-release.sh | bash
 ```
 
 Other knobs: `OMPZ_PREFIX` (install dir), `OMPZ_REPO` (fork to pull from).
