@@ -233,7 +233,7 @@ describe("zg query output parsing", () => {
 				"source:",
 				"1\tLine one about caching.",
 				"2\tLine two about invalidation.",
-				"trace: query \"cache invalidation\": fts #1, vector #1; fused #1",
+				'trace: query "cache invalidation": fts #1, vector #1; fused #1',
 				"",
 				"#2 matchedBy=fts auth.md:1-2",
 				"1\tThe auth service validates JWT tokens.",

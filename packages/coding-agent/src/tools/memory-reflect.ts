@@ -55,9 +55,7 @@ export class MemoryReflectTool implements AgentTool<typeof memoryReflectSchema> 
 						details: {},
 					};
 				}
-				const summary = result.items
-					.map(item => `- ${item.id ? `[${item.id}] ` : ""}${item.content}`)
-					.join("\n");
+				const summary = result.items.map(item => `- ${item.id ? `[${item.id}] ` : ""}${item.content}`).join("\n");
 				return {
 					content: [{ type: "text", text: `Based on recalled memories:\n\n${summary}` }],
 					details: {},
