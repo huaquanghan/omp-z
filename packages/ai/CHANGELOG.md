@@ -7,7 +7,8 @@
 - Added `operationTimeoutMs`, an aggregate wall-clock budget for one logical provider request that spans every nested pi-ai retry of that request. It is checked before each retry sleep: a retry whose backoff would land past the budget fails immediately with `ProviderOperationDeadlineError` naming the budget and the elapsed time, instead of sleeping and leaving the caller silent. Enforced in the shared replay-safe stream retry, the Anthropic provider loop and HTTP client backoff, the OpenAI Responses transient stream retry, the Codex Responses websocket/provider/whitespace retries, and the Google and Gemini CLI empty-stream retries; a caller abort still wins everywhere. Omitted or `0` disables it. Independent of `streamIdleTimeoutMs`, which bounds silence inside one live stream and never interrupts a stream that is producing output ([#12786](https://github.com/can1357/oh-my-pi/pull/12786) by [@geoyws](https://github.com/geoyws)).
 ### Fixed
 
-- Fixed Claude Opus 5.5 ignoring a mid-session switch to high effort when the session started without an explicit effort; the change is now sent as a cache-preserving per-message effort control ([#12909](https://github.com/can1357/oh-my-pi/pull/12909) by [@h4vc](https://github.com/h4vc)).
+- Fixed Claude Opus 5.5 not applying a mid-session switch to high-effort reasoning when the session started without an explicit effort setting.
+- Fixed Alibaba Token Plan monthly quotas not appearing in usage reports or the status line.
 
 ## [18.2.9] - 2026-09-22
 
