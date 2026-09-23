@@ -15,7 +15,10 @@ describe("runUpdateCommand fetch cancellation", () => {
 		const fetchStub = Object.assign(
 			async (_input: FetchInput, init?: FetchInit) => {
 				requestSignal = init?.signal ?? undefined;
-				return Response.json({ version: "999.0.0" });
+				return new Response(null, {
+					status: 302,
+					headers: { location: "https://github.com/huaquanghan/omp-z/releases/tag/ompz-v999.0.0" },
+				});
 			},
 			{ preconnect: globalThis.fetch.preconnect },
 		);
@@ -27,26 +30,20 @@ describe("runUpdateCommand fetch cancellation", () => {
 	});
 });
 
-describe("getLatestRelease rename pointers", () => {
+describe("getLatestRelease fork releases", () => {
 	afterEach(() => {
 		vi.restoreAllMocks();
 	});
 
-	function stubRegistry(manifests: Record<string, unknown>): string[] {
+	function stubLatestRelease(location: string | undefined, status = 302): string[] {
 		const urls: string[] = [];
 		const fetchStub = Object.assign(
 			async (input: FetchInput) => {
-				const url = String(input);
-				urls.push(url);
-				let manifest: unknown;
-				for (const pkg in manifests) {
-					if (url.includes(pkg)) {
-						manifest = manifests[pkg];
-						break;
-					}
-				}
-				if (!manifest) return new Response(null, { status: 404, statusText: "Not Found" });
-				return Response.json(manifest);
+				urls.push(String(input));
+				return new Response(null, {
+					status,
+					headers: location ? { location } : {},
+				});
 			},
 			{ preconnect: globalThis.fetch.preconnect },
 		);
@@ -54,48 +51,29 @@ describe("getLatestRelease rename pointers", () => {
 		return urls;
 	}
 
-	it("follows omp.rename to the new package and resolves version, dist, and names from its manifest", async () => {
-		const urls = stubRegistry({
-			"@new/omp": { version: "999.1.0", omp: { dist: "npm" } },
-			"@oh-my-pi/pi-coding-agent": {
-				version: "999.0.0",
-				omp: { dist: "binary", rename: { package: "@new/omp", natives: "@new/natives" } },
-			},
-		});
+	it("resolves the latest ompz tag through the fork's releases/latest redirect", async () => {
+		const urls = stubLatestRelease("https://github.com/huaquanghan/omp-z/releases/tag/ompz-v999.1.0");
 
 		const release = await getLatestRelease();
 
+		expect(urls).toEqual(["https://github.com/huaquanghan/omp-z/releases/latest"]);
+		expect(release.tag).toBe("ompz-v999.1.0");
 		expect(release.version).toBe("999.1.0");
-		expect(release.dist).toBe("npm");
-		expect(release.packages).toEqual({ pkg: "@new/omp", natives: "@new/natives" });
-		expect(urls).toEqual([
-			"https://registry.npmjs.org/@oh-my-pi/pi-coding-agent/latest",
-			"https://registry.npmjs.org/@new/omp/latest",
-		]);
-	});
-	it("fetches the canary dist-tag when checking the canary channel", async () => {
-		const urls = stubRegistry({
-			"@oh-my-pi/pi-coding-agent": { version: "999.0.0-canary.1" },
-		});
-
-		await getLatestRelease({ channel: "canary" });
-
-		expect(urls).toEqual(["https://registry.npmjs.org/@oh-my-pi/pi-coding-agent/canary"]);
+		expect(release.dist).toBe("binary");
 	});
 
-	it("ignores a rename pointer that cycles back to an already-visited package", async () => {
-		const urls = stubRegistry({
-			"@oh-my-pi/pi-coding-agent": {
-				version: "999.0.0",
-				omp: { rename: { package: "@oh-my-pi/pi-coding-agent" } },
-			},
-		});
+	it("keeps the fork's release-spin suffix in the resolved version", async () => {
+		stubLatestRelease("https://github.com/huaquanghan/omp-z/releases/tag/ompz-v18.2.10-1");
 
-		const release = await getLatestRelease();
+		const release = await getLatestRelease({ channel: "canary" });
 
-		expect(urls).toHaveLength(1);
-		expect(release.version).toBe("999.0.0");
-		expect(release.packages).toEqual({ pkg: "@oh-my-pi/pi-coding-agent", natives: "@oh-my-pi/pi-natives" });
+		expect(release.version).toBe("18.2.10-1");
+	});
+
+	it("throws when GitHub does not redirect to a release tag", async () => {
+		stubLatestRelease(undefined, 404);
+
+		await expect(getLatestRelease()).rejects.toThrow("Could not resolve the latest huaquanghan/omp-z release");
 	});
 });
 
@@ -108,7 +86,7 @@ describe("getLatestRelease proxy errors", () => {
 		const fetchStub = Object.assign(
 			async () => {
 				throw new Error(
-					'UnsupportedProxyProtocol fetching "https://registry.npmjs.org/@oh-my-pi/pi-coding-agent/latest". ' +
+					'UnsupportedProxyProtocol fetching "https://github.com/huaquanghan/omp-z/releases/latest". ' +
 						"For more information, pass `verbose: true` in the second argument to fetch()",
 				);
 			},

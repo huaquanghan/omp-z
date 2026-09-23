@@ -5,7 +5,6 @@
  * Uses the installer that owns the active omp executable when it can be detected.
  */
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -22,7 +21,12 @@ import {
 	withTimeoutSignal,
 } from "../utils/fetch-timeout";
 
-const REPO = "can1357/oh-my-pi";
+// ompz fork: updates resolve the fork's GitHub releases — tags are `ompz-v*`,
+// assets `ompz-*`, and only the standalone-binary channel exists (the fork
+// ships no npm package, Homebrew formula, or mise backend).
+const REPO = "huaquanghan/omp-z";
+const RELEASE_TAG_PREFIX = "ompz-v";
+const OMPZ_CLI = "ompz";
 const PACKAGE = "@oh-my-pi/pi-coding-agent";
 const HOMEBREW_FORMULA = "can1357/tap/omp";
 const MISE_TOOL = "github:can1357/oh-my-pi";
@@ -288,7 +292,7 @@ async function getReleaseBinaryAsset(
 	githubToken?: string,
 	allowPrerelease = false,
 ): Promise<ReleaseBinaryAsset> {
-	const tag = `v${expectedVersion}`;
+	const tag = `${RELEASE_TAG_PREFIX}${expectedVersion}`;
 	const resolvedGitHubToken = githubToken ?? (await resolveGitHubToken());
 	const headers: Record<string, string> = {
 		Accept: "application/vnd.github+json",
@@ -453,46 +457,6 @@ async function getNpmGlobalBinDir(): Promise<string | undefined> {
 	} catch {
 		return undefined;
 	}
-}
-
-async function getHomebrewFormulaPrefix(): Promise<string | undefined> {
-	if (!$which("brew")) return undefined;
-	for (const formula of [HOMEBREW_FORMULA, APP_NAME]) {
-		try {
-			const result = await $`brew --prefix ${formula}`.quiet().nothrow();
-			if (result.exitCode !== 0) continue;
-			const output = result.text().trim();
-			if (output.length > 0) return output;
-		} catch {}
-	}
-	return undefined;
-}
-
-async function getMiseBinDirs(): Promise<string[]> {
-	if (!$which("mise")) return [];
-	try {
-		const result = await $`mise bin-paths ${MISE_TOOL}`.quiet().nothrow();
-		if (result.exitCode !== 0) return [];
-		return result
-			.text()
-			.split(/\r?\n/)
-			.map(line => line.trim())
-			.filter(line => line.length > 0);
-	} catch {
-		return [];
-	}
-}
-
-function getMiseDataDir(): string {
-	const override = process.env.MISE_DATA_DIR;
-	if (override && override.length > 0) return override;
-	if (process.platform === "win32") {
-		const localAppData = process.env.LOCALAPPDATA;
-		if (localAppData && localAppData.length > 0) return path.join(localAppData, "mise");
-	}
-	const xdgDataHome = process.env.XDG_DATA_HOME;
-	if (xdgDataHome && xdgDataHome.length > 0) return path.join(xdgDataHome, "mise");
-	return path.join(os.homedir(), ".local", "share", "mise");
 }
 
 function normalizePathForComparison(filePath: string): string {
@@ -766,14 +730,10 @@ export function resolveUpdateTargetFromPath(
  * valid. The `bun pm bin -g` / `npm prefix -g` probes are then skipped unless
  * the launcher is a symlink, whose bin dirs distinguish a manager launcher
  * (taken over in place) from a foreign symlink (resolved to its real binary).
- * Homebrew/mise detection always runs: both managers install GitHub release
- * binaries and stay valid regardless of how the release is distributed.
+ * ompz ships standalone binaries only — no Homebrew formula or mise backend
+ * exists for the fork — so those managers are never probed.
  */
 async function resolveUpdateTarget(options: { allowPackageManagers: boolean }): Promise<UpdateTarget> {
-	const homebrewPrefix = await getHomebrewFormulaPrefix();
-	const miseAvailable = $which("mise") !== undefined;
-	const miseBinDirs = miseAvailable ? await getMiseBinDirs() : [];
-	const miseDataDir = miseAvailable ? getMiseDataDir() : undefined;
 	const ompPath = resolveOmpPath();
 
 	// Binary-only releases skip package-manager routing, but a symlinked
@@ -789,84 +749,72 @@ async function resolveUpdateTarget(options: { allowPackageManagers: boolean }): 
 		return resolveUpdateTargetFromPath(ompPath, bunBinDir, {
 			allowPackageManagers: options.allowPackageManagers,
 			bunGlobalDir: probeManagers ? process.env.BUN_INSTALL_GLOBAL_DIR : undefined,
-			homebrewPrefix,
-			miseBinDirs,
-			miseDataDir,
 			npmBinDir,
 		});
 	}
 
-	if (bunBinDir) return { method: "bun" };
-
-	throw new Error(`Could not resolve ${APP_NAME} binary path in PATH`);
+	throw new Error(`Could not resolve ${OMPZ_CLI} binary path in PATH. Reinstall: ${installerHint()}`);
 }
 
-/** Bound on `omp.rename` hops so a broken pointer chain cannot loop forever. */
-const MAX_RENAME_HOPS = 3;
+/**
+ * Get the latest ompz release info from the fork's GitHub releases. The
+ * `releases/latest` HTML redirect exposes the newest tag without spending
+ * unauthenticated API rate-limit budget or needing a token — the same trick
+ * `install-from-release.sh` uses to resolve the release. `channel` is
+ * accepted for call-site compatibility; ompz ships stable releases only.
+ */
+export async function getLatestRelease(
+	options: { timeoutMs?: number; channel?: UpdateChannel } = {},
+): Promise<ReleaseInfo> {
+	const timeoutMs = options.timeoutMs ?? RELEASE_METADATA_TIMEOUT_MS;
+	const tag = await fetchLatestReleaseTag(timeoutMs);
+	const version = tag.startsWith(RELEASE_TAG_PREFIX) ? tag.slice(RELEASE_TAG_PREFIX.length) : tag;
+	return { tag, version, dist: "binary", packages: { ...CURRENT_PACKAGES } };
+}
 
-async function fetchLatestManifest(
-	pkg: string,
-	timeoutMs: number,
-	channel: UpdateChannel,
-): Promise<{ version: string; manifest: Record<string, unknown> }> {
+/** Resolve the newest ompz release tag via the `releases/latest` redirect. */
+async function fetchLatestReleaseTag(timeoutMs: number): Promise<string> {
 	let response: Response;
 	try {
-		response = await fetch(`${NPM_REGISTRY}${pkg}/${channel === "canary" ? "canary" : "latest"}`, {
+		response = await fetch(`https://github.com/${REPO}/releases/latest`, {
+			redirect: "manual",
 			signal: withTimeoutSignal(timeoutMs),
 		});
 	} catch (err) {
 		if (isTimeoutError(err)) {
-			throw new Error(`Timed out fetching release info for ${pkg} after ${Math.round(timeoutMs / 1000)}s`, {
+			throw new Error(`Timed out fetching latest ${REPO} release after ${Math.round(timeoutMs / 1000)}s`, {
 				cause: err,
 			});
 		}
 		if (isUnsupportedProxyError(err)) throw new Error(unsupportedProxyMessage(), { cause: err });
 		throw err;
 	}
-	if (!response.ok) {
-		if (response.status === 404 && channel === "canary") {
-			throw new Error(`No canary release has been published for ${pkg} yet. Try \`${APP_NAME} update --stable\`.`);
-		}
-		throw new Error(`Failed to fetch release info for ${pkg}: ${response.statusText}`);
+	const location = response.headers.get("location") ?? "";
+	const tag = /\/releases\/tag\/([^/?#]+)/.exec(location)?.[1];
+	if (!tag) {
+		throw new Error(`Could not resolve the latest ${REPO} release (status ${response.status})`);
 	}
+	return decodeURIComponent(tag);
+}
 
-	const data: unknown = await response.json();
-	if (!isRecord(data) || typeof data.version !== "string") {
-		throw new Error(`Malformed npm registry response for ${pkg}: missing version`);
-	}
-	return { version: data.version, manifest: data };
+const OMPZ_SPIN_RE = /^(\d+\.\d+\.\d+)-(\d+)$/;
+
+/** Strip the fork's `-N` release-spin suffix: `18.2.10-1` → `18.2.10`. */
+function ompzCoreVersion(version: string): string {
+	return OMPZ_SPIN_RE.exec(version)?.[1] ?? version;
 }
 
 /**
- * Get the latest release info from the npm registry, following `omp.rename`
- * pointers ({@link resolveReleaseRename}) when the package has moved to a new
- * npm name. Version, dist, and install names all come from the final manifest
- * in the chain. Uses npm instead of GitHub API to avoid unauthenticated rate
- * limiting.
+ * Compare ompz versions: the upstream semver core first, then the fork's
+ * numeric spin suffix (`18.2.10-1` > `18.2.10`). Needed because `ompz-vX.Y.Z-N`
+ * tags sort after plain X.Y.Z while SemVer reads `-N` as a prerelease.
  */
-export async function getLatestRelease(
-	options: { timeoutMs?: number; channel?: UpdateChannel } = {},
-): Promise<ReleaseInfo> {
-	const timeoutMs = options.timeoutMs ?? RELEASE_METADATA_TIMEOUT_MS;
-	const channel = options.channel ?? "stable";
-	const packages: ReleasePackages = { ...CURRENT_PACKAGES };
-	const visited = new Set([packages.pkg]);
-	let latest = await fetchLatestManifest(packages.pkg, timeoutMs, channel);
-	for (let hop = 0; hop < MAX_RENAME_HOPS; hop++) {
-		const rename = resolveReleaseRename(latest.manifest);
-		if (!rename || visited.has(rename.pkg)) break;
-		visited.add(rename.pkg);
-		packages.pkg = rename.pkg;
-		if (rename.natives) packages.natives = rename.natives;
-		latest = await fetchLatestManifest(packages.pkg, timeoutMs, channel);
-	}
-
-	return {
-		tag: `v${latest.version}`,
-		version: latest.version,
-		dist: resolveReleaseDist(latest.manifest),
-		packages,
-	};
+export function compareOmpzVersions(a: string, b: string): number {
+	const core = compareVersions(ompzCoreVersion(a), ompzCoreVersion(b));
+	if (core !== 0) return core;
+	const spinA = Number(OMPZ_SPIN_RE.exec(a)?.[2] ?? 0);
+	const spinB = Number(OMPZ_SPIN_RE.exec(b)?.[2] ?? 0);
+	return spinA - spinB;
 }
 
 interface BunInstallCachePruneResult {
@@ -1162,16 +1110,18 @@ function getBinaryName(): string {
 	}
 
 	if (os === "windows") {
-		return `${APP_NAME}-${os}-${archName}.exe`;
+		return `${OMPZ_CLI}-${os}-${archName}.exe`;
 	}
-	return `${APP_NAME}-${os}-${archName}`;
+	return `${OMPZ_CLI}-${os}-${archName}`;
 }
 
 /**
- * Resolve the path that `omp` maps to in the user's PATH.
+ * Resolve the path that `ompz` maps to in the user's PATH. Deliberately not
+ * falling back to `omp`: when an upstream install owns that name, updating it
+ * with fork releases would clobber the user's other install.
  */
 function resolveOmpPath(): string | undefined {
-	return $which(APP_NAME) ?? undefined;
+	return $which(OMPZ_CLI) ?? undefined;
 }
 
 /**
@@ -1202,7 +1152,11 @@ async function reportedVersionAtPath(binaryPath: string): Promise<string | undef
  */
 async function verifyBinaryAtPath(binaryPath: string, expectedVersion: string): Promise<InstalledVersionVerification> {
 	const actual = await reportedVersionAtPath(binaryPath);
-	return { ok: actual === expectedVersion, actual, path: binaryPath };
+	// The compiled binary reports the upstream core version (`omp/X.Y.Z`) while
+	// ompz releases may carry a `-N` spin suffix, so a `-1` spin release
+	// verifies against a binary reporting `X.Y.Z`.
+	const ok = actual === expectedVersion || actual === ompzCoreVersion(expectedVersion);
+	return { ok, actual, path: binaryPath };
 }
 
 async function validateExistingUpdateTarget(targetPath: string): Promise<void> {
@@ -1239,7 +1193,7 @@ function printVerifiedVersion(expectedVersion: string, binaryPath?: string): voi
 
 function formatVerificationFailure(result: InstalledVersionVerification, expectedVersion: string): string {
 	if (result.actual) {
-		return `${APP_NAME} at ${result.path} still reports ${result.actual} (expected ${expectedVersion})`;
+		return `${OMPZ_CLI} at ${result.path} still reports ${result.actual} (expected ${expectedVersion})`;
 	}
 	return `could not verify updated version${result.path ? ` at ${result.path}` : ""}`;
 }
@@ -1387,7 +1341,7 @@ export async function replaceBinaryForUpdate(options: BinaryReplacementOptions):
 		const verification = await options.verifyInstalledVersion(options.expectedVersion);
 		if (!verification.ok) {
 			throw new Error(
-				`${formatVerificationFailure(verification, options.expectedVersion)}; restored previous ${APP_NAME} binary`,
+				`${formatVerificationFailure(verification, options.expectedVersion)}; restored previous ${OMPZ_CLI} binary`,
 			);
 		}
 
@@ -1884,22 +1838,22 @@ export async function updateViaBinaryAt(
 		return result;
 	});
 	printVerifiedVersion(expectedVersion, verification.path ?? targetPath);
-	console.log(chalk.dim(`Restart ${APP_NAME} to use the new version`));
+	console.log(chalk.dim(`Restart ${OMPZ_CLI} to use the new version`));
 }
 
 /**
  * In-place forwarder bodies, by shim extension, for launchers that cannot be
  * renamed aside during a script-shim takeover; each execs the sibling
- * `omp.exe`. Rewriting matters for the shims that outrank `.exe` at command
+ * `ompz.exe`. Rewriting matters for the shims that outrank `.exe` at command
  * resolution: PowerShell prefers `.ps1` and Git Bash resolves the
  * extensionless sh shim first, so leaving the old body behind would keep
  * launching the replaced install.
  */
 const SHIM_FORWARDERS: Record<string, string> = {
-	"": `#!/bin/sh\nexec "$(dirname "$0")/${APP_NAME}.exe" "$@"\n`,
-	".cmd": `@"%~dp0${APP_NAME}.exe" %*\r\n`,
-	".bat": `@"%~dp0${APP_NAME}.exe" %*\r\n`,
-	".ps1": `& "$PSScriptRoot\\${APP_NAME}.exe" @args\nexit $LASTEXITCODE\n`,
+	"": `#!/bin/sh\nexec "$(dirname "$0")/${OMPZ_CLI}.exe" "$@"\n`,
+	".cmd": `@"%~dp0${OMPZ_CLI}.exe" %*\r\n`,
+	".bat": `@"%~dp0${OMPZ_CLI}.exe" %*\r\n`,
+	".ps1": `& "$PSScriptRoot\\${OMPZ_CLI}.exe" @args\nexit $LASTEXITCODE\n`,
 };
 
 /**
@@ -1929,7 +1883,7 @@ export async function updateViaShimTakeover(
 ): Promise<void> {
 	const binaryName = options.binaryName ?? getBinaryName();
 	const launcherDir = path.dirname(shimPath);
-	const exePath = path.join(launcherDir, `${APP_NAME}.exe`);
+	const exePath = path.join(launcherDir, `${OMPZ_CLI}.exe`);
 	const attempt = `${Date.now()}.${process.pid}.${updateAttemptSeq++}`;
 	const tempPath = `${exePath}.${attempt}.new`;
 	const asset = await getReleaseBinaryAsset(
@@ -1954,7 +1908,7 @@ export async function updateViaShimTakeover(
 	// never retire the same shims or reclaim a live run's backup before its
 	// verification can roll it back.
 	await withFileLock(exePath, async () => {
-		console.log(chalk.dim(`Installing ${APP_NAME}.exe beside the script launcher...`));
+		console.log(chalk.dim(`Installing ${OMPZ_CLI}.exe beside the script launcher...`));
 		await fs.promises.rename(tempPath, exePath);
 		// Retire the shims so PATH resolution lands on the new exe. Renamed, not
 		// deleted: restorable on verification failure, and Windows permits
@@ -1965,7 +1919,7 @@ export async function updateViaShimTakeover(
 		const backupSuffix = `${attempt}.bak`;
 		const retired: Array<{ launcher: string; backup: string }> = [];
 		for (const ext of ["", ".cmd", ".ps1", ".bat"]) {
-			const launcher = path.join(launcherDir, `${APP_NAME}${ext}`);
+			const launcher = path.join(launcherDir, `${OMPZ_CLI}${ext}`);
 			const backup = `${launcher}.${backupSuffix}`;
 			try {
 				await fs.promises.rename(launcher, backup);
@@ -2000,7 +1954,7 @@ export async function updateViaShimTakeover(
 			}
 			await unlinkIfExists(exePath);
 			throw new Error(
-				`${formatVerificationFailure(verification, expectedVersion)}; restored previous ${APP_NAME} launcher`,
+				`${formatVerificationFailure(verification, expectedVersion)}; restored previous ${OMPZ_CLI} launcher`,
 			);
 		}
 		for (const { backup } of retired) {
@@ -2008,7 +1962,7 @@ export async function updateViaShimTakeover(
 		}
 		// Reclaim exe backups and retired-shim leftovers from earlier attempts.
 		for (const ext of [".exe", "", ".cmd", ".ps1", ".bat"]) {
-			await sweepStaleUpdateArtifacts(path.join(launcherDir, `${APP_NAME}${ext}`));
+			await sweepStaleUpdateArtifacts(path.join(launcherDir, `${OMPZ_CLI}${ext}`));
 		}
 	});
 	for (const { launcher } of forwarded) {
@@ -2022,20 +1976,17 @@ export async function updateViaShimTakeover(
 		);
 	}
 	printVerifiedVersion(expectedVersion);
-	console.log(chalk.dim(`Restart ${APP_NAME} to use the new version`));
+	console.log(chalk.dim(`Restart ${OMPZ_CLI} to use the new version`));
 }
 
 /**
- * Platform-appropriate installer one-liner for recovery instructions.
- *
- * Forces the installer's binary mode (`--binary` / `-Binary`): the default
- * mode prefers a bun-based install whenever bun is present, which would send
- * a user recovering from a binary-only release straight back through bun.
+ * Platform-appropriate installer one-liner for recovery instructions — the
+ * ompz release installer, which always installs the standalone binary.
  */
 function installerHint(): string {
 	return process.platform === "win32"
-		? "& ([scriptblock]::Create((irm https://omp.sh/install.ps1))) -Binary"
-		: "curl -fsSL https://omp.sh/install | sh -s -- --binary";
+		? `download ompz-windows-${process.arch}.exe from https://github.com/${REPO}/releases/latest`
+		: `curl -fsSL https://raw.githubusercontent.com/${REPO}/main/scripts/ompz/install-from-release.sh | sh`;
 }
 
 /** Persisted channel, or undefined when settings are unavailable (SDK/test embedding without `Settings.init()`). */
@@ -2079,7 +2030,7 @@ export async function runUpdateCommand(opts: {
 		process.exit(1);
 	}
 
-	const comparison = compareVersions(release.version, VERSION);
+	const comparison = compareOmpzVersions(release.version, VERSION);
 
 	if (comparison <= 0 && !opts.force && !isChannelSwitch) {
 		const icon = theme?.status?.success ?? "✔";
@@ -2132,7 +2083,7 @@ export async function runUpdateCommand(opts: {
 				// Reachable in forced mode only through a Windows script
 				// launcher resolved from PATH (the bun/npm bin-dir probes are
 				// skipped), so the launcher path is always known.
-				if (!target.path) throw new Error(`Could not resolve ${APP_NAME} launcher path in PATH`);
+				if (!target.path) throw new Error(`Could not resolve ${OMPZ_CLI} launcher path in PATH`);
 				console.log(chalk.dim("This release ships as a standalone binary; replacing the script launcher."));
 				await updateViaShimTakeover(target.path, release.version, { allowPrerelease });
 				console.log(
@@ -2174,10 +2125,10 @@ export async function runUpdateCommand(opts: {
  * Print update command help.
  */
 export function printUpdateHelp(): void {
-	console.log(`${chalk.bold(`${APP_NAME} update`)} - Check for and install updates
+	console.log(`${chalk.bold(`${OMPZ_CLI} update`)} - Check for and install updates
 
 ${chalk.bold("Usage:")}
-  ${APP_NAME} update [options]
+  ${OMPZ_CLI} update [options]
 
 ${chalk.bold("Options:")}
   -c, --check     Check for updates without installing
@@ -2187,10 +2138,10 @@ ${chalk.bold("Options:")}
   --stable        Switch back to the stable channel
 
 ${chalk.bold("Examples:")}
-  ${APP_NAME} update              Update to latest version
-  ${APP_NAME} update --check      Check if updates are available
-  ${APP_NAME} update --force      Force reinstall
-  ${APP_NAME} update -l           Update installed plugins
-  ${APP_NAME} update --canary    Switch to the canary channel and update
+  ${OMPZ_CLI} update              Update to latest version
+  ${OMPZ_CLI} update --check      Check if updates are available
+  ${OMPZ_CLI} update --force      Force reinstall
+  ${OMPZ_CLI} update -l           Update installed plugins
+  ${OMPZ_CLI} update --canary    Switch to the canary channel and update
 `);
 }
