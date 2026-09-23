@@ -117,8 +117,8 @@ export const zvecBackend: MemoryBackend = {
 		return truncateApproxTokens(parts.join("\n\n").trim(), settings.get("zvec.injectionTokenLimit"));
 	},
 
-	async beforeAgentStartPrompt(session, promptText): Promise<MemoryPromptPreparation | undefined> {
-		return await getZvecSessionState(session)?.beforeAgentStartPrompt(promptText);
+	async beforeAgentStartPrompt(session, promptText, signal): Promise<MemoryPromptPreparation | undefined> {
+		return await getZvecSessionState(session)?.beforeAgentStartPrompt(promptText, signal);
 	},
 
 	async preCompactionContext(_messages, _settings, session): Promise<string | undefined> {

@@ -45,7 +45,10 @@ export function stripMemoryFrontmatter(content: string): string {
 		if (line === "---") {
 			const head = lines.slice(start, index);
 			if (head.length > 0 && head.every(candidate => FRONTMATTER_KEY_RE.test(candidate.trim()))) {
-				return lines.slice(index + 1).join("\n").replace(/^\s+/, "");
+				return lines
+					.slice(index + 1)
+					.join("\n")
+					.replace(/^\s+/, "");
 			}
 			return content;
 		}

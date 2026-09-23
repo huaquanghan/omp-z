@@ -16,14 +16,7 @@ import type { ZvecBackendConfig } from "./config";
 import { ensureZvecBankIndexed, markZvecBankDirty } from "./indexer";
 import { zvecBankDir } from "./paths";
 import { newZvecMemoryId, stripMemoryFrontmatter, writeZvecMemory } from "./store";
-import {
-	dedupeZgHits,
-	isMissingIndexError,
-	memoryIdFromHitPath,
-	parseZgQueryOutput,
-	type ZgHit,
-	zgQuery,
-} from "./zg";
+import { dedupeZgHits, isMissingIndexError, memoryIdFromHitPath, parseZgQueryOutput, type ZgHit, zgQuery } from "./zg";
 
 const kZvecSessionState = Symbol("zvec.sessionState");
 
@@ -166,15 +159,17 @@ export class ZvecSessionState {
 		});
 	}
 
-	async recallHits(query: string): Promise<ZgHit[]> {
+	async recallHits(query: string, signal?: AbortSignal): Promise<ZgHit[]> {
 		const trimmed = query.trim();
 		if (!trimmed) return [];
 		await this.ensureIndexed();
-		let result = await zgQuery(this.bankDir, trimmed, this.config.recallLimit);
-		if (!result.ok && isMissingIndexError(result)) {
+		if (signal?.aborted) return [];
+		let result = await zgQuery(this.bankDir, trimmed, this.config.recallLimit, signal);
+		if (!result.ok && isMissingIndexError(result) && !signal?.aborted) {
 			await this.ensureIndexed(true);
-			result = await zgQuery(this.bankDir, trimmed, this.config.recallLimit);
+			result = await zgQuery(this.bankDir, trimmed, this.config.recallLimit, signal);
 		}
+		if (signal?.aborted) return [];
 		if (!result.ok) {
 			this.#lastError = result.stderr.trim() || `zg query exited with code ${result.code}`;
 			if (this.config.debug) logger.debug("Zvec: recall query failed", { error: this.#lastError });
@@ -183,12 +178,16 @@ export class ZvecSessionState {
 		return parseZgQueryOutput(result.stdout);
 	}
 
-	async recallBlock(query: string): Promise<string | undefined> {
-		const hits = await this.recallHits(query);
+	async recallBlock(query: string, signal?: AbortSignal): Promise<string | undefined> {
+		const hits = await this.recallHits(query, signal);
+		if (signal?.aborted) return undefined;
 		return formatZvecRecallBlock(hits, this.config.bank);
 	}
 
-	async beforeAgentStartPrompt(promptText: string): Promise<MemoryPromptPreparation | undefined> {
+	async beforeAgentStartPrompt(
+		promptText: string,
+		signal?: AbortSignal,
+	): Promise<MemoryPromptPreparation | undefined> {
 		if (!this.config.autoRecall || this.hasRecalledForFirstTurn) return undefined;
 		const latest = promptText.trim();
 		if (!latest) return undefined;
@@ -199,7 +198,10 @@ export class ZvecSessionState {
 			[...history, { role: "user", content: latest }],
 			this.config.recallContextTurns,
 		);
-		const context = await this.recallBlock(truncateRecallQuery(query, latest, this.config.recallMaxQueryChars));
+		const context = await this.recallBlock(
+			truncateRecallQuery(query, latest, this.config.recallMaxQueryChars),
+			signal,
+		);
 		return {
 			context,
 			commit: () => {

@@ -17,6 +17,7 @@ export interface ZgRunResult {
 export interface ZgRunOptions {
 	cwd: string;
 	timeoutMs?: number;
+	signal?: AbortSignal;
 }
 
 export type ZgRunner = (args: string[], options: ZgRunOptions) => Promise<ZgRunResult>;
@@ -57,13 +58,17 @@ async function spawnZg(args: string[], options: ZgRunOptions): Promise<ZgRunResu
 	} catch (error) {
 		return { ok: false, code: 1, stdout: "", stderr: error instanceof Error ? error.message : String(error) };
 	}
-	const timer = setTimeout(() => {
+	const killProc = () => {
 		try {
 			proc.kill();
 		} catch {
 			// Already exited.
 		}
-	}, timeoutMs);
+	};
+	const timer = setTimeout(killProc, timeoutMs);
+	const signal = options.signal;
+	if (signal?.aborted) killProc();
+	else signal?.addEventListener("abort", killProc, { once: true });
 	try {
 		const [stdout, stderr, code] = await Promise.all([
 			new Response(proc.stdout).text(),
@@ -75,6 +80,7 @@ async function spawnZg(args: string[], options: ZgRunOptions): Promise<ZgRunResu
 		return { ok: false, code: 1, stdout: "", stderr: error instanceof Error ? error.message : String(error) };
 	} finally {
 		clearTimeout(timer);
+		signal?.removeEventListener("abort", killProc);
 	}
 }
 
@@ -88,10 +94,11 @@ export function zgIndex(bankDir: string, embeddingModel: string): Promise<ZgRunR
 }
 
 /** Run a hybrid query against the index rooted at `bankDir`. */
-export function zgQuery(bankDir: string, query: string, limit: number): Promise<ZgRunResult> {
+export function zgQuery(bankDir: string, query: string, limit: number, signal?: AbortSignal): Promise<ZgRunResult> {
 	return run(["query", query, "--limit", String(limit), "--preview", "full", "--trace"], {
 		cwd: bankDir,
 		timeoutMs: DEFAULT_TIMEOUT_MS,
+		signal,
 	});
 }
 
