@@ -506,7 +506,7 @@ describe("AgentSession retry recovery", () => {
 		if (!model) {
 			throw new Error("Expected bundled Anthropic test model to exist");
 		}
-		authStorage.setRuntimeApiKey("anthropic", "anthropic-test-key");
+		authStorage.keys.setRuntime("anthropic", "anthropic-test-key");
 
 		const mock = createMockModel({
 			responses: Array.from({ length: 8 }, () => ({ throw: OPERATION_DEADLINE_ERROR })),
