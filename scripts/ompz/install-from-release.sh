@@ -36,7 +36,7 @@ human_bytes() { # bytes -> "197 MiB"
 
 stat_size() { stat -c %s "$1" 2>/dev/null || stat -f %z "$1" 2>/dev/null || echo 0; }
 
-# " ·  ϟ · ━━━━━━━━━───── 47% · 92/197 MiB"
+# " · ϟ · ━━━━━━━━━───── 47% · 92/197 MiB"
 bar_frame() { # <cur-bytes> <total-bytes>
 	local cur="$1" total="$2" pct filled i filled_bar="" empty_bar=""
 	pct=$(( total > 0 ? cur * 100 / total : 0 ))
@@ -44,7 +44,7 @@ bar_frame() { # <cur-bytes> <total-bytes>
 	filled=$(( pct * 36 / 100 ))
 	for (( i = 0; i < filled; i++ ));   do filled_bar+="━"; done
 	for (( i = filled; i < 36; i++ )); do empty_bar+="─"; done
-	printf '\r %s·%s  %sϟ%s %s·%s %s%s%s%s %s%3d%%%s %s·%s %s/%s MiB \033[K' \
+	printf '\r %s·%s %sϟ%s %s·%s %s%s%s%s %s%3d%%%s %s·%s %s/%s MiB \033[K' \
 		"$DIM" "$RESET" \
 		"$CYAN" "$RESET" \
 		"$DIM" "$RESET" \
