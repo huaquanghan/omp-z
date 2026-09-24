@@ -22,7 +22,7 @@ else
 	BOLD=""; DIM=""; GREEN=""; CYAN=""; YELLOW=""; RED=""; RESET=""; TTY=0
 fi
 
-step() { printf '%s==>%s %s\n' "$CYAN" "$RESET" "$*" >&2; }
+step() { printf '👾 %s·%s  %s\n' "$DIM" "$RESET" "$*" >&2; }
 ok()   { printf ' %s✓%s %s\n' "$GREEN" "$RESET" "$*" >&2; }
 warn() { printf ' %s!%s %s\n' "$YELLOW" "$RESET" "$*" >&2; }
 die()  { printf ' %s✗%s %s\n' "$RED" "$RESET" "$*" >&2; exit 1; }
@@ -36,7 +36,7 @@ human_bytes() { # bytes -> "197 MiB"
 
 stat_size() { stat -c %s "$1" 2>/dev/null || stat -f %z "$1" 2>/dev/null || echo 0; }
 
-# " · ━━━━━━━━━───── 47% · 92/197 MiB · ϟ"
+# " ·  ϟ · ━━━━━━━━━───── 47% · 92/197 MiB"
 bar_frame() { # <cur-bytes> <total-bytes>
 	local cur="$1" total="$2" pct filled i filled_bar="" empty_bar=""
 	pct=$(( total > 0 ? cur * 100 / total : 0 ))
@@ -44,12 +44,13 @@ bar_frame() { # <cur-bytes> <total-bytes>
 	filled=$(( pct * 36 / 100 ))
 	for (( i = 0; i < filled; i++ ));   do filled_bar+="━"; done
 	for (( i = filled; i < 36; i++ )); do empty_bar+="─"; done
-	printf '\r %s·%s %s%s%s%s %s%3d%%%s %s·%s %s/%s MiB %s·%s %sϟ%s\033[K' \
+	printf '\r %s·%s  %sϟ%s %s·%s %s%s%s%s %s%3d%%%s %s·%s %s/%s MiB \033[K' \
+		"$DIM" "$RESET" \
+		"$CYAN" "$RESET" \
 		"$DIM" "$RESET" \
 		"$GREEN" "$filled_bar" "$DIM" "$empty_bar" \
 		"$BOLD" "$pct" "$RESET" \
-		"$DIM" "$RESET" "$(( cur / 1048576 ))" "$(( total / 1048576 ))" \
-		"$DIM" "$RESET" "$CYAN" "$RESET" >&2
+		"$DIM" "$RESET" "$(( cur / 1048576 ))" "$(( total / 1048576 ))" >&2
 }
 
 # Redraw bar_frame in place while <pid> runs; leaves the final frame on screen.
@@ -119,7 +120,7 @@ trap 'rm -rf "$TMP"' EXIT
 printf '%sompz installer%s\n' "$BOLD" "$RESET" >&2
 
 download() {
-	step "downloading $ASSET ${DIM}($TAG_LABEL$SIZE_LABEL)${RESET}"
+	step "Downloading $ASSET ${DIM}($TAG_LABEL$SIZE_LABEL)${RESET}"
 	if (( TTY && SIZE_BYTES > 0 )); then
 		curl -fsSL --retry 3 -o "$TMP/$ASSET" "$BASE_URL/$ASSET" &
 		dl_bar $! "$TMP/$ASSET" "$SIZE_BYTES"
