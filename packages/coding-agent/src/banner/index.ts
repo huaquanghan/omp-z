@@ -63,7 +63,7 @@ function colorizeBanner(lines: string[]): string[] {
 }
 
 function formatBannerLines(variant: "tinhtute" | "omp", width: number, expanded = false): string[] {
-	const lines: string[] = ["", "", ""];
+	const lines: string[] = [""];
 
 	const art = variant === "omp" ? BANNER_OMP : BANNER_TINHTUTE;
 	const artWidth = Math.max(...art.map(l => l.length));
