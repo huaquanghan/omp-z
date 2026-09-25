@@ -39,6 +39,7 @@ import {
 	STATS_ACTIVITY_WORKER_ARG,
 	TERMINAL_OUTPUT_WORKER_ARG,
 } from "./cli/worker-selectors";
+import { OMPZ_CLI } from "./ompz-brand";
 import type * as JsProcessEntry from "./eval/js/process-entry";
 import type { WorkerInbound as JsWorkerInbound, WorkerOutbound as JsWorkerOutbound } from "./eval/js/worker-protocol";
 
@@ -50,7 +51,7 @@ if (Bun.semver.order(Bun.version, MIN_BUN_VERSION) < 0) {
 }
 
 try {
-	process.title = APP_NAME;
+	process.title = OMPZ_CLI;
 } catch {}
 
 // `Bun.build`-API compiled Windows executables report `import.meta.main ===
@@ -92,7 +93,7 @@ const PREPAINT_SAFE_FLAGS: Record<string, true> = {
 async function setFullProcessName(): Promise<void> {
 	// Latency boundary: bun:ffi/node:os are unnecessary before the first frame.
 	const { setProcessName } = await import("@oh-my-pi/pi-utils/process-name");
-	setProcessName(APP_NAME);
+	setProcessName(OMPZ_CLI);
 }
 
 /** Install PI_PROXY handling before any command implementation can make a provider request. */
@@ -592,7 +593,17 @@ export async function runCli(argv: string[]): Promise<void> {
 			process.exitCode = 1;
 			return;
 		}
-		await run({ bin: APP_NAME, version: VERSION, argv: resolved.argv, commands, metadataHelp: showHelp });
+		await run({
+			bin: OMPZ_CLI,
+			// --version keeps the upstream `omp/` prefix: the updater's verifier in
+			// already-installed binaries parses exactly `omp/X.Y.Z`, so renaming it
+			// would brick self-update from every release that predates this rename.
+			versionBin: APP_NAME,
+			version: VERSION,
+			argv: resolved.argv,
+			commands,
+			metadataHelp: showHelp,
+		});
 	} finally {
 		stopStartupComposer?.();
 	}

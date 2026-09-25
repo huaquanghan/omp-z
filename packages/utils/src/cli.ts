@@ -415,6 +415,9 @@ export interface CommandEntry {
 
 export interface RunOptions {
 	bin: string;
+	/** Prefix printed by `--version` (`<versionBin>/<version>`). Defaults to
+	 * `bin`; keep it stable — release verifiers parse this line. */
+	versionBin?: string;
 	version: string;
 	argv: string[];
 	commands: CommandEntry[];
@@ -456,9 +459,10 @@ export async function run(opts: RunOptions): Promise<void> {
 		return;
 	}
 
-	// Version
+	// Version. The prefix is a parse contract for the updater's post-install
+	// verification (parseReportedVersion), so it does not follow `bin` renames.
 	if (commandId === "--version" || commandId === "-v") {
-		process.stdout.write(`${bin}/${version}\n`);
+		process.stdout.write(`${opts.versionBin ?? bin}/${version}\n`);
 		return;
 	}
 

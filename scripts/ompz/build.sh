@@ -18,14 +18,21 @@
 #         packages/coding-agent/dist/SHA256SUMS.txt when more than one target.
 #
 # Environment:
-#   CROSS_TARGET   set internally per target; do not set it yourself.
+#   CROSS_TARGET    set internally per target; do not set it yourself.
+#   OMPZ_VERSION    version stamped into the binary (default: nearest ompz-v*
+#                   tag, else package.json — see lib.sh ompz_version)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$SCRIPT_DIR/lib.sh"
+REPO_ROOT="$(ompz_repo_root)"
 PKG="$REPO_ROOT/packages/coding-agent"
 NATIVES_DIR="$REPO_ROOT/packages/natives/native"
 NATIVES_VERSION="$(jq -r .version "$REPO_ROOT/packages/natives/package.json")"
+
+# Stamp the release version into every binary this build produces
+# (process.env.OMPZ_VERSION define in compile-binary.ts).
+export OMPZ_VERSION="$(ompz_version "$REPO_ROOT")"
 
 ALL_TARGETS="darwin-arm64 darwin-x64 linux-arm64 linux-x64 windows-arm64 windows-x64"
 

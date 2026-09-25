@@ -21,6 +21,7 @@ import {
 	withTimeoutSignal,
 } from "../utils/fetch-timeout";
 import { cfgUpdateChannel } from "../modes/settings";
+import { OMPZ_CLI } from "../ompz-brand";
 import { DEFAULT_NPM_REGISTRY } from "./npm-registry";
 
 // ompz fork: updates resolve the fork's GitHub releases — tags are `ompz-v*`,
@@ -28,7 +29,6 @@ import { DEFAULT_NPM_REGISTRY } from "./npm-registry";
 // ships no npm package, Homebrew formula, or mise backend).
 const REPO = "huaquanghan/omp-z";
 const RELEASE_TAG_PREFIX = "ompz-v";
-const OMPZ_CLI = "ompz";
 const PACKAGE = "@oh-my-pi/pi-coding-agent";
 const HOMEBREW_FORMULA = "can1357/tap/omp";
 const MISE_TOOL = "github:can1357/oh-my-pi";
@@ -1128,8 +1128,15 @@ function resolveOmpPath(): string | undefined {
  * being mistaken for an unreplaced launcher.
  */
 export function parseReportedVersion(output: string): string | undefined {
-	if (!output.startsWith(`${APP_NAME}/`)) return undefined;
-	return output.slice(APP_NAME.length + 1).match(/^(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/)?.[1];
+	// Accept both prefixes: binaries stamped before the ompz rename report
+	// `omp/X.Y.Z`, current ones report `ompz/X.Y.Z`.
+	const prefix = output.startsWith(`${OMPZ_CLI}/`)
+		? OMPZ_CLI
+		: output.startsWith(`${APP_NAME}/`)
+			? APP_NAME
+			: undefined;
+	if (prefix === undefined) return undefined;
+	return output.slice(prefix.length + 1).match(/^(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/)?.[1];
 }
 
 async function reportedVersionAtPath(binaryPath: string): Promise<string | undefined> {

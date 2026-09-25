@@ -29,8 +29,9 @@ export const CONFIG_DIR_NAME: string = ".omp";
 /** Ordered main settings filenames: canonical write target first, legacy-compatible YAML fallback second. */
 export const MAIN_CONFIG_FILENAMES = ["config.yml", "config.yaml"] as const;
 
-/** Version (e.g. "1.0.0") */
-export const VERSION: string = version;
+/** Version (e.g. "1.0.0"). Compiled ompz builds stamp the release tag via the
+ * `OMPZ_VERSION` define (see compile-binary.ts); source runs may also set it. */
+export const VERSION: string = process.env.OMPZ_VERSION || version;
 
 /** Default User-Agent header string (e.g. "omp/17.2.12") */
 export const USER_AGENT = `omp/${VERSION}`;

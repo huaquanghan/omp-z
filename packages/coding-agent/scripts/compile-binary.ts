@@ -46,6 +46,9 @@ export async function compileCodingAgent(options: CodingAgentCompileOptions): Pr
 				"process.env.PI_COMPILED": JSON.stringify("true"),
 				"process.env.PI_TINY_TRANSFORMERS_VERSION": JSON.stringify(options.transformersVersion),
 				"process.env.PI_DOCS_EMBED": JSON.stringify((await buildDocsIndexPayload()).payload),
+				// ompz fork stamps the release tag into the binary at compile
+				// time (e.g. "18.3.1-1"); empty keeps the package.json fallback.
+				"process.env.OMPZ_VERSION": JSON.stringify(Bun.env.OMPZ_VERSION ?? ""),
 			},
 			// Precompiled bytecode skips parsing the ~20 MB bundle at boot:
 			// `omp --version` 256 ms -> 30 ms on M4 Max (+52 MB binary).

@@ -28,7 +28,7 @@ install -m 0755 "$SRC" "$DEST"
 
 COMMIT="$(git -C "$REPO_ROOT" rev-parse HEAD)"
 TREE_HASH="$(ompz_tree_hash "$REPO_ROOT")"
-VERSION="$(jq -r .version "$REPO_ROOT/packages/coding-agent/package.json")"
+VERSION="$(ompz_version "$REPO_ROOT")"
 
 cat > "$STATE_DIR/build.json" <<EOF
 {
@@ -40,5 +40,5 @@ cat > "$STATE_DIR/build.json" <<EOF
 }
 EOF
 
-echo "installed $DEST (omp $VERSION @ ${COMMIT:0:12})"
+echo "installed $DEST (ompz $VERSION @ ${COMMIT:0:12})"
 echo "stock omp unchanged: $(command -v omp || echo 'not on PATH')"
