@@ -63,7 +63,9 @@ function colorizeBanner(lines: string[]): string[] {
 }
 
 function formatBannerLines(variant: "tinhtute" | "omp", width: number, expanded = false): string[] {
-	const lines: string[] = [""];
+	// trimBlankEdges drops plain-blank rows at block edges; a bare ANSI reset
+	// survives (non-\S) while rendering blank — keeps the gap above the art.
+	const lines: string[] = ["\x1b[0m"];
 
 	const art = variant === "omp" ? BANNER_OMP : BANNER_TINHTUTE;
 	const artWidth = Math.max(...art.map(l => l.length));
