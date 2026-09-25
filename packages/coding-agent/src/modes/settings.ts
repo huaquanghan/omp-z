@@ -150,7 +150,8 @@ export const cfgStatusLinePreset = register({
 	id: "statusLine.preset",
 	type: "enum",
 	values: STATUS_LINE_PRESET_VALUES,
-	default: "default",
+	// ompz: fork preset as the default status line.
+	default: "ompz",
 	ui: {
 		tab: "appearance",
 		group: "Status Line",
@@ -925,7 +926,8 @@ export const cfgPasteLargeMenuThreshold = register({
 export const cfgStartupQuiet = register({
 	id: "startup.quiet",
 	type: "boolean",
-	default: false,
+	// ompz: default quiet — the bundled banner extension replaces the stock welcome.
+	default: true,
 	ui: {
 		tab: "interaction",
 		group: "Startup & Updates",
