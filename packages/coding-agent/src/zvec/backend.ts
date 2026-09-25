@@ -11,6 +11,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { logger } from "@oh-my-pi/pi-utils";
 import type { Settings } from "../config/settings";
+import { cfgMemoryBackend } from "../memory-backend/settings";
 import type {
 	MemoryBackend,
 	MemoryBackendEditInput,
@@ -35,6 +36,7 @@ import {
 	stripMemoryFrontmatter,
 	writeZvecMemory,
 } from "./store";
+import { cfgZvecInjectionTokenLimit } from "./settings";
 import { getZvecSessionState, setZvecSessionState, ZvecSessionState } from "./state";
 import {
 	dedupeZgHits,
@@ -114,7 +116,7 @@ export const zvecBackend: MemoryBackend = {
 		const state = getZvecSessionState(session);
 		const parts = [STATIC_INSTRUCTIONS];
 		if (state?.lastRecallSnippet) parts.push(state.lastRecallSnippet);
-		return truncateApproxTokens(parts.join("\n\n").trim(), settings.get("zvec.injectionTokenLimit"));
+		return truncateApproxTokens(parts.join("\n\n").trim(), cfgZvecInjectionTokenLimit.get(settings));
 	},
 
 	async beforeAgentStartPrompt(session, promptText, signal): Promise<MemoryPromptPreparation | undefined> {
@@ -136,7 +138,7 @@ export const zvecBackend: MemoryBackend = {
 		const config = previous?.config ?? (session ? loadZvecConfig(session.settings, cwd) : undefined);
 		if (!config) return;
 		await fs.rm(zvecBankDir(agentDir, config.bank), { recursive: true, force: true });
-		if (!session?.sessionId || session.settings.get("memory.backend") !== "zvec") return;
+		if (!session?.sessionId || cfgMemoryBackend.get(session.settings) !== "zvec") return;
 		try {
 			const state = new ZvecSessionState({ sessionId: session.sessionId, config, session, agentDir });
 			setZvecSessionState(session, state);

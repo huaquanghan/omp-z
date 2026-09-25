@@ -1,13 +1,29 @@
 import type { StatusLineHost, StatusLineSession } from "@oh-my-pi/pi-tui/status-line/host";
 import type { StatusLineSettings } from "@oh-my-pi/pi-tui/status-line/types";
 import { settings } from "../config/settings";
-import type { SettingPath, SettingValue } from "../config/settings-schema";
+import type { Setting } from "../config/registry";
 import type { AgentSession } from "../session/agent-session";
 import { getSessionCompactionBoundaries } from "../session/context-usage-runtime";
 import { limitMatchesActiveAccount } from "../slash-commands/helpers/active-oauth-account";
 import { resolveActiveRepoContextSync } from "../utils/active-repo-context";
 import { GH_COMMAND_TIMEOUT_MS, github } from "../utils/github";
 import { calculateTokensPerSecond } from "../utils/token-rate";
+
+import {
+	cfgGitEnabled,
+	cfgStatusLineCompactThinkingLevel,
+	cfgStatusLineContextLine,
+	cfgStatusLineLeftSegments,
+	cfgStatusLinePreset,
+	cfgStatusLineRightSegments,
+	cfgStatusLineSegmentOptions,
+	cfgStatusLineSeparator,
+	cfgStatusLineSessionAccent,
+	cfgStatusLineShowHookStatus,
+	cfgStatusLineTransparent,
+	cfgTuiCodexResetFireworks,
+} from "./settings";
+import { cfgGoalStatusInFooter } from "../goals/settings";
 
 /**
  * Session capabilities the host consults beyond the display subset. Every
@@ -21,8 +37,8 @@ export type StatusLineHostSession = StatusLineSession &
  * Read `statusLine.*` only when explicitly configured; unconfigured fields
  * come back `undefined` so the active preset's own defaults can apply.
  */
-function configured<P extends SettingPath>(path: P): SettingValue<P> | undefined {
-	return settings.isConfigured(path) ? settings.get(path) : undefined;
+function configured<T>(setting: Setting<T>): T | undefined {
+	return settings.isConfigured(setting) ? setting.get(settings) : undefined;
 }
 
 /**
@@ -33,28 +49,28 @@ function configured<P extends SettingPath>(path: P): SettingValue<P> | undefined
  */
 export function readStatusLineSettings(): StatusLineSettings {
 	return {
-		preset: settings.get("statusLine.preset"),
-		leftSegments: settings.get("statusLine.leftSegments"),
-		rightSegments: settings.get("statusLine.rightSegments"),
-		separator: configured("statusLine.separator"),
-		showHookStatus: settings.get("statusLine.showHookStatus"),
-		segmentOptions: settings.getGroup("statusLine").segmentOptions,
-		sessionAccent: configured("statusLine.sessionAccent"),
-		transparent: configured("statusLine.transparent"),
-		compactThinkingLevel: settings.get("statusLine.compactThinkingLevel"),
-		contextLine: configured("statusLine.contextLine"),
+		preset: cfgStatusLinePreset.get(settings),
+		leftSegments: cfgStatusLineLeftSegments.get(settings),
+		rightSegments: cfgStatusLineRightSegments.get(settings),
+		separator: configured(cfgStatusLineSeparator),
+		showHookStatus: cfgStatusLineShowHookStatus.get(settings),
+		segmentOptions: cfgStatusLineSegmentOptions.get(settings),
+		sessionAccent: configured(cfgStatusLineSessionAccent),
+		transparent: configured(cfgStatusLineTransparent),
+		compactThinkingLevel: cfgStatusLineCompactThinkingLevel.get(settings),
+		contextLine: configured(cfgStatusLineContextLine),
 	};
 }
 
 /** Application policy and runtime services consumed by the portable status renderer. */
 export const statusLineHost: StatusLineHost<StatusLineHostSession> = {
 	getSettings: () => readStatusLineSettings(),
-	gitEnabled: () => settings.get("git.enabled"),
-	codexResetFireworksEnabled: () => settings.get("tui.codexResetFireworks"),
+	gitEnabled: () => cfgGitEnabled.get(settings),
+	codexResetFireworksEnabled: () => cfgTuiCodexResetFireworks.get(settings),
 	getSettingsRevision: () => settings.revision,
 	getSessionSettingsIdentity: session => session.settings,
 	getSessionSettingsRevision: session => session.settings?.revision ?? 0,
-	goalStatusInFooter: session => (session.settings ?? settings).get("goal.statusInFooter"),
+	goalStatusInFooter: session => cfgGoalStatusInFooter.get(session.settings ?? settings),
 	activeAccount: (session, provider) =>
 		session.modelRegistry?.authStorage?.oauth.identity(provider, session.sessionId),
 	canFetchUsageReports: session => typeof session.fetchUsageReports === "function",
@@ -64,12 +80,6 @@ export const statusLineHost: StatusLineHost<StatusLineHostSession> = {
 		github.run(cwd, ["pr", "view", "--json", "number,url"], AbortSignal.timeout(GH_COMMAND_TIMEOUT_MS)),
 	calculateTokensPerSecond,
 	limitMatchesActiveAccount,
-	computeCompactionBoundaries: (session, contextWindow, model) => {
-		const source = session.settings;
-		return getSessionCompactionBoundaries(
-			typeof source?.getGroup === "function" ? source : settings,
-			contextWindow,
-			model,
-		);
-	},
+	computeCompactionBoundaries: (session, contextWindow, model) =>
+		getSessionCompactionBoundaries(session.settings ?? settings, contextWindow, model),
 };

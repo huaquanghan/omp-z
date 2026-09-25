@@ -7,6 +7,8 @@ import { resolveMemoryBackend } from "../memory-backend/resolve";
 import recallDescription from "../prompts/tools/recall.md" with { type: "text" };
 import type { ToolSession } from ".";
 
+import { cfgMemoryBackend } from "../memory-backend/settings";
+
 const memoryRecallSchema = type({
 	query: type("string").describe("natural language search query"),
 });
@@ -26,7 +28,7 @@ export class MemoryRecallTool implements AgentTool<typeof memoryRecallSchema> {
 	constructor(private readonly session: ToolSession) {}
 
 	static createIf(session: ToolSession): MemoryRecallTool | null {
-		const backend = session.settings.get("memory.backend");
+		const backend = cfgMemoryBackend.get(session.settings);
 		if (backend !== "hindsight" && backend !== "mnemopi" && backend !== "zvec") return null;
 		if (backend === "hindsight" && !isHindsightConfigured(loadHindsightConfig(session.settings))) return null;
 		return new MemoryRecallTool(session);
@@ -34,7 +36,7 @@ export class MemoryRecallTool implements AgentTool<typeof memoryRecallSchema> {
 
 	async execute(_id: string, params: MemoryRecallParams, signal?: AbortSignal): Promise<AgentToolResult> {
 		return untilAborted(signal, async () => {
-			const backend = this.session.settings.get("memory.backend");
+			const backend = cfgMemoryBackend.get(this.session.settings);
 			if (backend === "zvec") {
 				const resolved = await resolveMemoryBackend(this.session.settings);
 				const result = await resolved.search?.(

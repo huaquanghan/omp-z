@@ -6,6 +6,8 @@ import { resolveMemoryBackend } from "../memory-backend/resolve";
 import retainDescription from "../prompts/tools/retain.md" with { type: "text" };
 import type { ToolSession } from ".";
 
+import { cfgMemoryBackend } from "../memory-backend/settings";
+
 const memoryRetainSchema = type({
 	items: type({
 		content: type("string").describe("information to remember"),
@@ -30,14 +32,14 @@ export class MemoryRetainTool implements AgentTool<typeof memoryRetainSchema, Me
 	constructor(private readonly session: ToolSession) {}
 
 	static createIf(session: ToolSession): MemoryRetainTool | null {
-		const backend = session.settings.get("memory.backend");
+		const backend = cfgMemoryBackend.get(session.settings);
 		if (backend !== "hindsight" && backend !== "mnemopi" && backend !== "zvec") return null;
 		if (backend === "hindsight" && !isHindsightConfigured(loadHindsightConfig(session.settings))) return null;
 		return new MemoryRetainTool(session);
 	}
 
 	async execute(_id: string, params: MemoryRetainParams): Promise<AgentToolResult<MemoryRetainDetails>> {
-		const backend = this.session.settings.get("memory.backend");
+		const backend = cfgMemoryBackend.get(this.session.settings);
 		if (backend === "zvec") {
 			const resolved = await resolveMemoryBackend(this.session.settings);
 			if (!resolved.save) throw new Error("Zvec backend does not support memory saves.");

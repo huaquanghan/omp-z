@@ -8,6 +8,19 @@
 
 import type { Settings } from "../config/settings";
 import { zvecProjectBankId } from "./paths";
+import {
+	cfgZvecAutoRecall,
+	cfgZvecAutoRetain,
+	cfgZvecBank,
+	cfgZvecDebug,
+	cfgZvecEmbeddingModel,
+	cfgZvecInjectionTokenLimit,
+	cfgZvecRecallContextTurns,
+	cfgZvecRecallLimit,
+	cfgZvecRecallMaxQueryChars,
+	cfgZvecRetainEveryNTurns,
+	cfgZvecScoping,
+} from "./settings";
 
 export type ZvecScoping = "global" | "per-project";
 
@@ -29,20 +42,20 @@ export interface ZvecBackendConfig {
 }
 
 export function loadZvecConfig(settings: Settings, cwd?: string): ZvecBackendConfig {
-	const scoping = settings.get("zvec.scoping") ?? "per-project";
-	const configuredBank = settings.get("zvec.bank")?.trim();
+	const scoping = cfgZvecScoping.get(settings) ?? "per-project";
+	const configuredBank = cfgZvecBank.get(settings)?.trim();
 	const bank = scoping === "global" ? configuredBank || "default" : zvecProjectBankId(cwd ?? settings.getCwd());
 	return {
 		bank,
 		scoping,
-		embeddingModel: settings.get("zvec.embeddingModel")?.trim() || ZVEC_DEFAULT_EMBEDDING_MODEL,
-		autoRecall: settings.get("zvec.autoRecall"),
-		autoRetain: settings.get("zvec.autoRetain"),
-		retainEveryNTurns: Math.max(1, settings.get("zvec.retainEveryNTurns")),
-		recallLimit: Math.max(1, settings.get("zvec.recallLimit")),
-		recallContextTurns: Math.max(1, settings.get("zvec.recallContextTurns")),
-		recallMaxQueryChars: Math.max(200, settings.get("zvec.recallMaxQueryChars")),
-		injectionTokenLimit: Math.max(500, settings.get("zvec.injectionTokenLimit")),
-		debug: settings.get("zvec.debug"),
+		embeddingModel: cfgZvecEmbeddingModel.get(settings)?.trim() || ZVEC_DEFAULT_EMBEDDING_MODEL,
+		autoRecall: cfgZvecAutoRecall.get(settings),
+		autoRetain: cfgZvecAutoRetain.get(settings),
+		retainEveryNTurns: Math.max(1, cfgZvecRetainEveryNTurns.get(settings)),
+		recallLimit: Math.max(1, cfgZvecRecallLimit.get(settings)),
+		recallContextTurns: Math.max(1, cfgZvecRecallContextTurns.get(settings)),
+		recallMaxQueryChars: Math.max(200, cfgZvecRecallMaxQueryChars.get(settings)),
+		injectionTokenLimit: Math.max(500, cfgZvecInjectionTokenLimit.get(settings)),
+		debug: cfgZvecDebug.get(settings),
 	};
 }
