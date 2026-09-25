@@ -72,7 +72,7 @@ describe("InteractiveMode MCP connection status", () => {
 		});
 		// These tests exercise the non-quiet startup-status path; the schema
 		// default is quiet (bundled banner replaces the stock welcome).
-		session.settings.set("startup.quiet", false);
+		cfgStartupQuiet.set(session.settings, false);
 		eventBus = new EventBus();
 		mode = new InteractiveMode(session, "test", undefined, () => {}, [], undefined, eventBus);
 		// This contract is the banner wiring, not git branch watching; a real

@@ -66,8 +66,8 @@ describe("InteractiveMode LSP startup welcome banner", () => {
 		// These tests exercise the non-quiet welcome/LSP startup path; the schema
 		// default is quiet (bundled banner replaces the stock welcome). init()
 		// re-reads the global instance, so both settings objects need the flag.
-		session.settings.set("startup.quiet", false);
-		Settings.instance.set("startup.quiet", false);
+		cfgStartupQuiet.set(session.settings, false);
+		cfgStartupQuiet.set(Settings.instance, false);
 		eventBus = new EventBus();
 		lspServers = [
 			{

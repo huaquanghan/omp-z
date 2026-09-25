@@ -58,7 +58,7 @@ describe("issue #9597 — cold-launch welcome duplication", () => {
 		settings = await Settings.init({ inMemory: true });
 		// These tests exercise the welcome-header path; the schema default is
 		// quiet (bundled banner replaces the stock welcome).
-		settings.set("startup.quiet", false);
+		cfgStartupQuiet.set(settings, false);
 		config = {
 			quiet: cfgStartupQuiet.get(settings),
 			composerShape: cfgComposerShape.get(settings) ?? "box",

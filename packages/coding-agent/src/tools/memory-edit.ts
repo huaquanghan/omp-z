@@ -38,7 +38,7 @@ export class MemoryEditTool implements AgentTool<typeof memoryEditSchema> {
 		if (params.op === "update" && params.content === undefined && params.importance === undefined) {
 			throw new Error("memory_edit update requires content or importance.");
 		}
-		if (this.session.settings.get("memory.backend") === "zvec") {
+		if (cfgMemoryBackend.get(this.session.settings) === "zvec") {
 			const resolved = await resolveMemoryBackend(this.session.settings);
 			if (!resolved.edit) throw new Error("Zvec backend does not support memory edits.");
 			const result = await resolved.edit(
