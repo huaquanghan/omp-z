@@ -3,38 +3,18 @@ import { VERSION } from "@oh-my-pi/pi-utils/dirs";
 import type { ExtensionFactory } from "../extensibility/extensions";
 
 // =============================================================================
-// ANSI Shadow Font (8-line Unicode half-block / 3D shadow style)
+// Delta Corps Priest 1 (the original 8-row banner font), compressed to
+// quarter-block pixels (2×2 px per cell) → 4 rows, ~45 cols.
 // =============================================================================
 
 const BANNER_TINHTUTE = [
-	"    ███      ▄█  ███▄▄▄▄      ▄█    █▄        ███     ███    █▄      ███        ▄████████ ",
-	"▀█████████▄ ███  ███▀▀▀██▄   ███    ███   ▀█████████▄ ███    ███ ▀█████████▄   ███    ███ ",
-	"   ▀███▀▀██ ███▌ ███   ███   ███    ███      ▀███▀▀██ ███    ███    ▀███▀▀██   ███    █▀  ",
-	"    ███   ▀ ███▌ ███   ███  ▄███▄▄▄▄███▄▄     ███   ▀ ███    ███     ███   ▀  ▄███▄▄▄     ",
-	"    ███     ███▌ ███   ███ ▀▀███▀▀▀▀███▀      ███     ███    ███     ███     ▀▀███▀▀▀     ",
-	"    ███     ███  ███   ███   ███    ███       ███     ███    ███     ███       ███    █▄  ",
-	"    ███     ███  ███   ███   ███    ███       ███     ███    ███     ███       ███    ███ ",
-	"   ▄████▀   █▀    ▀█   █▀    ███    █▀       ▄████▀   ████████▀     ▄████▀     ██████████ ",
+	"▄▄█▙▄▖▟▌▐███▄ ▗█  █▖ ▄▄█▙▄▖█▌ ▐▙▗▄▟█▄▄ ▗█▀▀█▌",
+	" ▝█▛▀▌██▐█ ▐█ ▟█▄▄█▙▖ ▝█▛▀▌█▌ ▐█  ▜█▀▜ ▟█▄▖▀",
+	"  █▌  █▛▐█ ▐█▝▜█▀▀█▛   █▌  █▌ ▐█  ▐█  ▝▜█▀▘▄",
+	" ▗█▙▖ █▘▝█ ▐▛ ▐█  █▘  ▗█▙▖ █▙▄▟▛  ▟█▄  ▐█▄▄█▌",
 ];
 
-const BANNER_OMP = [
-	"  ▄████████▄    ▄▄▄▄███▄▄▄▄     ▄███████▄ ",
-	" ███    ███   ▄██▀▀▀███▀▀▀██▄  ███    ███ ",
-	" ███    ███   ███   ███   ███  ███    ███ ",
-	" ███    ███   ███   ███   ███  ███    ███ ",
-	" ███    ███   ███   ███   ███  ██████████▀",
-	" ███    ███   ███   ███   ███  ███        ",
-	" ███    ███   ███   ███   ███  ███        ",
-	"  ▀████████▀    ▀█   █▀    █▀   ▄████▀     ",
-];
-
-const BANNER_COMPACT = [
-	" _   _       _     _         _       ",
-	"| |_(_)_ __ | |__ | |_ _   _| |_ ___ ",
-	"| __| | '_ \\| '_ \\| __| | | | __/ _ \\",
-	"| |_| | | | | | | | |_| |_| | ||  __/",
-	" \\__|_|_| |_|_| |_|\\__|\\__,_|\\__|\\___|",
-];
+const BANNER_OMP = ["▗█▀▀█▛ ▄█████▙▖▗█▀▀█▌", "▐█  █▌ █▌ █▌ █▌▐█  █▌", "▐█  █▌ █▌ █▌ █▌▐█▀▀▀▀", "▝█▄▄█▙ ▀▙ ▜▌ ▜▌▝█▄▄"];
 
 // OMP Brand Gradient: Magenta (#F84FCC) -> Violet (#9362F4) -> Cyan (#00DBE4)
 const GRADIENT_STOPS: [number, number, number][] = [
@@ -88,19 +68,10 @@ function colorizeBanner(lines: string[]): string[] {
 function formatBannerLines(variant: "tinhtute" | "omp", width: number, expanded = false): string[] {
 	const lines: string[] = ["", ""];
 
-	if (variant === "omp") {
-		const colored = colorizeBanner(BANNER_OMP);
-		for (const line of colored) {
-			lines.push(center(line, width));
-		}
-	} else if (width >= 92) {
-		const colored = colorizeBanner(BANNER_TINHTUTE);
-		for (const line of colored) {
-			lines.push(center(line, width));
-		}
-	} else if (width >= 45) {
-		const colored = colorizeBanner(BANNER_COMPACT);
-		for (const line of colored) {
+	const art = variant === "omp" ? BANNER_OMP : BANNER_TINHTUTE;
+	const artWidth = Math.max(...art.map(l => l.length));
+	if (width >= artWidth) {
+		for (const line of colorizeBanner(art)) {
 			lines.push(center(line, width));
 		}
 	} else {
@@ -109,7 +80,7 @@ function formatBannerLines(variant: "tinhtute" | "omp", width: number, expanded 
 
 	lines.push("");
 
-	const subtitle = `\x1b[1m\x1b[38;2;248;79;204momp\x1b[0m \x1b[90mv${VERSION}\x1b[0m \x1b[90m·\x1b[0m \x1b[38;2;0;219;228mminimal coding agent\x1b[0m`;
+	const subtitle = `\x1b[1m\x1b[38;2;248;79;204mompz\x1b[0m \x1b[90mv${VERSION}\x1b[0m \x1b[90m·\x1b[0m \x1b[38;2;0;219;228mminimal coding agent\x1b[0m`;
 	lines.push(center(subtitle, width));
 
 	if (expanded) {
